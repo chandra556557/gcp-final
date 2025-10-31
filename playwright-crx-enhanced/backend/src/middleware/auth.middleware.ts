@@ -32,7 +32,7 @@ export const authMiddleware = (
     const token = authHeader.substring(7);
     const decoded = authService.verifyAccessToken(token);
 
-    req.user = { userId: decoded.userId, email: decoded.email };
+    req.user = { userId: String(decoded.userId), email: String(decoded.email) };
     next();
   } catch (error: any) {
     logger.error('Authentication error:', error);
@@ -54,7 +54,7 @@ export const optionalAuthMiddleware = async (
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = authService.verifyAccessToken(token);
-      req.user = { userId: decoded.userId, email: decoded.email };
+      req.user = { userId: String(decoded.userId), email: String(decoded.email) };
     }
     next();
   } catch (_error) {

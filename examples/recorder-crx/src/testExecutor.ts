@@ -15,7 +15,7 @@
  */
 
 import { apiService } from './apiService';
-import { realDataIntegration } from './realDataIntegration';
+// Self-healing integration removed
 
 export interface TestRun {
   id: string;
@@ -107,13 +107,13 @@ export class TestExecutor {
   }
 
   /**
-   * Execute a test with data-driven approach
+   * Execute current script code directly (without saving to database)
    */
-  async executeDataDrivenTest(scriptId: string, dataFileId: string): Promise<TestRun> {
+  async executeCurrentScript(scriptCode: string, language: string): Promise<TestRun> {
     // Create a new test run
     const testRun: TestRun = {
       id: Math.random().toString(36).substr(2, 9),
-      scriptId,
+      scriptId: 'current-script',
       status: 'pending',
       startTime: new Date(),
       logs: []
@@ -125,11 +125,11 @@ export class TestExecutor {
       // Notify that execution is starting
       this.notifyProgress(testRun.id, {
         status: 'starting',
-        message: 'Starting data-driven test execution...'
+        message: 'Starting test execution...'
       });
 
-      // Call backend API to start test run with data file
-      const backendTestRun = await apiService.startTestRun(scriptId, dataFileId);
+      // Call backend API to execute current script
+      const backendTestRun = await apiService.executeCurrentScript(scriptCode, language);
 
       // Update test run with backend ID
       testRun.id = backendTestRun.id;
@@ -140,13 +140,12 @@ export class TestExecutor {
       this.dispatchTestStarted(testRun);
 
       // Add initial log
-      this.addLog(testRun.id, `Data-driven test execution started for script: ${scriptId}`);
-      this.addLog(testRun.id, `Using data file: ${dataFileId}`);
+      this.addLog(testRun.id, `Test execution started for current script (${language})`);
 
       // Notify running status
       this.notifyProgress(testRun.id, {
         status: 'running',
-        message: 'Data-driven test is running...'
+        message: 'Test is running...'
       });
 
       // Poll for test results
@@ -154,7 +153,7 @@ export class TestExecutor {
 
       return testRun;
     } catch (error: any) {
-      console.error('Error executing data-driven test:', error);
+      console.error('Error executing current script:', error);
 
       // Update status to failed
       testRun.status = 'failed';
@@ -163,12 +162,13 @@ export class TestExecutor {
 
       this.notifyProgress(testRun.id, {
         status: 'failed',
-        error: error?.message || 'Failed to start data-driven test execution'
+        error: error?.message || 'Failed to start test execution'
       });
 
       throw error;
     }
   }
+
 
   /**
    * Get test run status
@@ -181,22 +181,14 @@ export class TestExecutor {
    * Dispatch test started event
    */
   private dispatchTestStarted(testRun: TestRun): void {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('testExecutionStarted', {
-        detail: { testExecution: testRun }
-      }));
-    }
+    // no-op: self-healing event dispatch removed
   }
 
   /**
    * Dispatch test completed event
    */
   private dispatchTestCompleted(testRun: TestRun): void {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('testExecutionCompleted', {
-        detail: { testExecution: testRun }
-      }));
-    }
+    // no-op: self-healing event dispatch removed
   }
 
   /**
@@ -379,23 +371,7 @@ export class TestExecutor {
    * Dispatch locator failure event for self-healing
    */
   private dispatchLocatorFailure(testRunId: string, errorMsg: string): void {
-    if (typeof window === 'undefined') return;
-
-    // Extract locator from error message if possible
-    const locatorMatch = errorMsg.match(/locator[:\s]+['"](.*?)['"]/i) || 
-                        errorMsg.match(/selector[:\s]+['"](.*?)['"]/i) ||
-                        errorMsg.match(/element[:\s]+['"](.*?)['"]/i);
-    
-    const locator = locatorMatch ? locatorMatch[1] : 'unknown';
-
-    window.dispatchEvent(new CustomEvent('locatorFailed', {
-      detail: {
-        testId: testRunId,
-        step: 0,
-        locator,
-        error: errorMsg
-      }
-    }));
+    // no-op: self-healing locator failure dispatch removed
   }
 
   /**

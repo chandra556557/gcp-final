@@ -1,0 +1,46 @@
+{
+  "uuid": "5f5afc92-440e-415b-8558-0bc0ac8ab300",
+  "historyId": "5f5afc92-440e-415b-8558-0bc0ac8ab300",
+  "testCaseId": "5f5afc92-440e-415b-8558-0bc0ac8ab300",
+  "fullName": "5f5afc92-440e-415b-8558-0bc0ac8ab300",
+  "name": "5f5afc92-440e-415b-8558-0bc0ac8ab300",
+  "status": "passed",
+  "statusDetails": {},
+  "stage": "finished",
+  "start": 1761634875793,
+  "stop": 1761634875793,
+  "steps": [
+    {
+      "name": "Parse script code",
+      "status": "passed",
+      "statusDetails": {},
+      "stage": "finished",
+      "start": 1761634875439,
+      "stop": 1761634875739
+    },
+    {
+      "name": "Initialize browser",
+      "status": "passed",
+      "statusDetails": {},
+      "stage": "finished",
+      "start": 1761634875253,
+      "stop": 1761634875753
+    },
+    {
+      "name": "Execute script actions",
+      "status": "passed",
+      "statusDetails": {},
+      "stage": "finished",
+      "start": 1761634874966,
+      "stop": 1761634875766
+    },
+    {
+      "name": "Verify results",
+      "status": "passed",
+      "statusDetails": {},
+      "stage": "finished",
+      "start": 1761634875579,
+      "stop": 1761634875779
+    }
+  ]
+}

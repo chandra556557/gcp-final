@@ -19,6 +19,7 @@ export type CrxSettings = {
   sidepanel?: boolean;
   experimental?: boolean;
   playInIncognito: boolean;
+  apiBaseUrl: string;
 };
 
 export const defaultSettings = {
@@ -27,12 +28,13 @@ export const defaultSettings = {
   sidepanel: true,
   experimental: false,
   playInIncognito: false,
+  apiBaseUrl: 'http://localhost:3001/api',
 };
 
 export async function loadSettings(): Promise<CrxSettings> {
   const [isAllowedIncognitoAccess, loadedPreferences] = await Promise.all([
     chrome.extension.isAllowedIncognitoAccess(),
-    chrome.storage.sync.get(['testIdAttributeName', 'targetLanguage', 'sidepanel', 'playInIncognito', 'experimental']) as Partial<CrxSettings>,
+    chrome.storage.sync.get(['testIdAttributeName', 'targetLanguage', 'sidepanel', 'playInIncognito', 'experimental', 'apiBaseUrl']) as Partial<CrxSettings>,
   ]);
   return { ...defaultSettings, ...loadedPreferences, playInIncognito: !!loadedPreferences.playInIncognito && isAllowedIncognitoAccess };
 }
@@ -44,8 +46,8 @@ export async function storeSettings(settings: CrxSettings) {
 const listeners = new Map<(settings: CrxSettings) => void, any>();
 
 export function addSettingsChangedListener(listener: (settings: CrxSettings) => void) {
-  const wrappedListener = ({ testIdAttributeName, targetLanguage, sidepanel, playInIncognito, experimental }: Record<string, chrome.storage.StorageChange>) => {
-    if (!testIdAttributeName && !targetLanguage && sidepanel && playInIncognito && experimental)
+  const wrappedListener = ({ testIdAttributeName, targetLanguage, sidepanel, playInIncognito, experimental, apiBaseUrl }: Record<string, chrome.storage.StorageChange>) => {
+    if (!testIdAttributeName && !targetLanguage && sidepanel && playInIncognito && experimental && !apiBaseUrl)
       return;
 
     loadSettings().then(listener).catch(() => {});

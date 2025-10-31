@@ -37,14 +37,12 @@
 }
 
 /* Enhanced Features Panels */
-.self-healing-manager,
 .test-executor-panel,
 .debugger-panel {
   padding: 16px;
   color: var(--vscode-foreground);
 }
 
-.healing-header,
 .executor-header,
 .debugger-header {
   display: flex;
@@ -55,7 +53,6 @@
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.healing-header h3,
 .executor-header h3,
 .debugger-header h3 {
   margin: 0;
@@ -63,7 +60,6 @@
   font-weight: 600;
 }
 
-.healing-header button,
 .executor-header button,
 .debugger-header button {
   padding: 4px 12px;
@@ -75,13 +71,11 @@
   font-size: 12px;
 }
 
-.healing-header button:hover,
 .executor-header button:hover,
 .debugger-header button:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
-.healing-header button:disabled,
 .executor-header button:disabled,
 .debugger-header button:disabled {
   opacity: 0.5;

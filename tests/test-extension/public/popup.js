@@ -1,5 +1,5 @@
 (function(){
-  const backendUrl = 'http://127.0.0.1:3100';
+  const backendUrl = 'http://127.0.0.1:3001';
   const form = document.getElementById('login-form');
   const statusEl = document.getElementById('status');
 

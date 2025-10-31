@@ -8,10 +8,8 @@ const swaggerDefinition = {
     description: 'API documentation for Playwright CRX Enhanced backend',
   },
   servers: [
-    { url: 'http://localhost:3000/api' },
-    { url: 'http://127.0.0.1:3000/api' },
-    { url: 'http://localhost:3100/api' },
-    { url: 'http://127.0.0.1:3100/api' }
+    { url: 'http://localhost:3001/api' },
+    { url: 'http://127.0.0.1:3001/api' }
   ],
   components: {
     securitySchemes: {

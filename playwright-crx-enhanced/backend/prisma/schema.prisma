@@ -19,7 +19,6 @@ model User {
   projects          Project[]
   refreshTokens     RefreshToken[]
   scripts           Script[]
-  testDataFiles     TestDataFile[]
   testRuns          TestRun[]
 
   @@index([email])
@@ -70,7 +69,6 @@ model Script {
   project             Project?             @relation(fields: [projectId], references: [id])
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   selfHealingLocators SelfHealingLocator[]
-  testDataFiles       TestDataFile[]
   testRuns            TestRun[]
   variables           Variable[]
 
@@ -94,7 +92,7 @@ model TestRun {
   viewport        Json?
   startedAt       DateTime   @default(now())
   completedAt     DateTime?
-  allureReportUrl String?
+  executionReportUrl String?
   script          Script     @relation(fields: [scriptId], references: [id], onDelete: Cascade)
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   steps           TestStep[]
@@ -164,39 +162,6 @@ model LocatorStrategy {
   @@index([userId, priority])
 }
 
-model TestDataFile {
-  id          String        @id @default(cuid())
-  name        String
-  fileName    String
-  fileType    String
-  fileSize    Int
-  fileUrl     String?
-  scriptId    String?
-  userId      String
-  rowCount    Int           @default(0)
-  columnNames Json?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  script      Script?       @relation(fields: [scriptId], references: [id])
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rows        TestDataRow[]
-
-  @@index([scriptId])
-  @@index([userId])
-}
-
-model TestDataRow {
-  id        String       @id @default(cuid())
-  fileId    String
-  rowNumber Int
-  data      Json
-  createdAt DateTime     @default(now())
-  file      TestDataFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@unique([fileId, rowNumber])
-  @@index([fileId])
-  @@index([rowNumber])
-}
 
 model ExtensionScript {
   id          String   @id @default(cuid())

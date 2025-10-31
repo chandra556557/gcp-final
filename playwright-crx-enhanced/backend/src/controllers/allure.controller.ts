@@ -17,23 +17,23 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
     const reportUrl = await allureService.getReportUrl(testRunId);
 
     await pool.query(
-      'UPDATE "TestRun" SET "allureReportUrl" = $2 WHERE id = $1',
+      'UPDATE "TestRun" SET "executionReportUrl" = $2 WHERE id = $1',
       [testRunId, reportUrl]
     );
 
-    logger.info(`Allure report generated for test run: ${testRunId}`);
+    logger.info(`Execution report generated for test run: ${testRunId}`);
 
     res.json({
       success: true,
       reportPath,
       reportUrl,
-      message: 'Allure report generated successfully',
+      message: 'Execution report generated successfully',
     });
   } catch (error: any) {
-    logger.error('Error generating Allure report:', error);
+    logger.error('Error generating Execution report:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to generate Allure report',
+      error: error.message || 'Failed to generate Execution report',
     });
   }
 };
@@ -51,7 +51,7 @@ export const getReportUrl = async (req: Request, res: Response): Promise<void> =
 
     res.json({ success: true, reportUrl });
   } catch (error: any) {
-    logger.error('Error getting Allure report URL:', error);
+    logger.error('Error getting Execution report URL:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to get report URL' });
   }
 };
@@ -61,7 +61,7 @@ export const getAllReports = async (_req: Request, res: Response) => {
     const reports = allureService.getAllReports();
     res.json({ success: true, reports });
   } catch (error: any) {
-    logger.error('Error getting all Allure reports:', error);
+    logger.error('Error getting all Execution reports:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to get reports' });
   }
 };
@@ -75,7 +75,7 @@ export const cleanupOldReports = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: `Cleaned up reports older than ${daysToKeep} days` });
   } catch (error: any) {
-    logger.error('Error cleaning up Allure reports:', error);
+    logger.error('Error cleaning up Execution reports:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to cleanup reports' });
   }
 };

@@ -4,6 +4,7 @@ import {
   getTestRuns,
   getTestRun,
   startTestRun,
+  executeCurrentScript,
   stopTestRun,
   getActiveTestRuns,
   reportTestResult,
@@ -20,6 +21,9 @@ router.get('/:id', authMiddleware, getTestRun);
 
 // Start a new test run
 router.post('/start', authMiddleware, startTestRun);
+
+// Execute current script code directly
+router.post('/execute-current', authMiddleware, executeCurrentScript);
 
 // Update test run (status, steps, completion)
 router.put('/:id', authMiddleware, updateTestRun);

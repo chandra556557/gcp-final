@@ -25,16 +25,10 @@ import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings, removeSettingsChangedListener } from './settings';
 import ModalContainer, { create as createModal } from 'react-modal-promise';
 import { SaveCodeForm } from './saveCodeForm';
-import { SelfHealingUI } from './selfHealingUI';
-import { AISelfHealingUI } from './aiSelfHealingUI';
-import { DDTManager } from './ddtManager';
-import { DebuggerUI } from './debuggerUI';
 import { TestExecutorUI } from './testExecutorUI';
-import { ApiTestingUI } from './apiTestingUI';
-import { apiService } from './apiService';
+import { apiService, type Project } from './apiService';
 import './crxRecorder.css';
 import './form.css';
-import './apiTesting.css';
 
 function setElementPicked(elementInfo: ElementInfo, userGesture?: boolean) {
   window.playwrightElementPicked(elementInfo, userGesture);
@@ -87,12 +81,7 @@ export const CrxRecorder: React.FC = ({
   const [selectedFileId, setSelectedFileId] = React.useState<string>(defaultSettings.targetLanguage);
 
   // Enhanced features state
-  const [showSelfHealing, setShowSelfHealing] = React.useState(false);
-  const [showAISelfHealing, setShowAISelfHealing] = React.useState(false);
-  const [showDDT, setShowDDT] = React.useState(false);
-  const [showDebugger, setShowDebugger] = React.useState(false);
   const [showTestExecutor, setShowTestExecutor] = React.useState(false);
-  const [showApiTesting, setShowApiTesting] = React.useState(false);
 
   // Save to database state
   const [showSaveModal, setShowSaveModal] = React.useState(false);
@@ -101,6 +90,10 @@ export const CrxRecorder: React.FC = ({
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState('');
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string>('');
+  const [projectsLoading, setProjectsLoading] = React.useState(false);
+  const [projectsError, setProjectsError] = React.useState('');
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
@@ -232,7 +225,26 @@ export const CrxRecorder: React.FC = ({
     setShowSaveModal(true);
     setSaveError('');
     setSaveSuccess(false);
+    setSelectedProjectId('');
   }, [source]);
+
+  React.useEffect(() => {
+    if (!showSaveModal) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setProjectsLoading(true);
+        setProjectsError('');
+        const list = await apiService.getProjects();
+        if (!cancelled) setProjects(list);
+      } catch (e: any) {
+        if (!cancelled) setProjectsError(e?.message || 'Failed to load projects');
+      } finally {
+        if (!cancelled) setProjectsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSaveModal]);
 
   const handleSaveToDatabase = React.useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,7 +267,8 @@ export const CrxRecorder: React.FC = ({
         scriptName.trim(),
         source.text,
         selectedFileId,
-        scriptDescription.trim() || undefined
+        scriptDescription.trim() || undefined,
+        selectedProjectId || undefined
       );
 
       setSaveSuccess(true);
@@ -264,13 +277,14 @@ export const CrxRecorder: React.FC = ({
         setScriptName('');
         setScriptDescription('');
         setSaveSuccess(false);
+        setSelectedProjectId('');
       }, 1500);
     } catch (error: any) {
       setSaveError(error?.message || 'Failed to save script');
     } finally {
       setIsSaving(false);
     }
-  }, [scriptName, scriptDescription, source, selectedFileId]);
+  }, [scriptName, scriptDescription, source, selectedFileId, selectedProjectId]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -324,28 +338,8 @@ export const CrxRecorder: React.FC = ({
     }
   };
 
-  const toggleSelfHealing = React.useCallback(() => {
-    setShowSelfHealing(prev => !prev);
-  }, []);
-
-  const toggleAISelfHealing = React.useCallback(() => {
-    setShowAISelfHealing(prev => !prev);
-  }, []);
-
-  const toggleDDT = React.useCallback(() => {
-    setShowDDT(prev => !prev);
-  }, []);
-
-  const toggleDebugger = React.useCallback(() => {
-    setShowDebugger(prev => !prev);
-  }, []);
-
   const toggleTestExecutor = React.useCallback(() => {
     setShowTestExecutor(prev => !prev);
-  }, []);
-
-  const toggleApiTesting = React.useCallback(() => {
-    setShowApiTesting(prev => !prev);
   }, []);
 
   React.useEffect(() => {
@@ -549,6 +543,29 @@ export const CrxRecorder: React.FC = ({
             </div>
 
             <div className="auth-field">
+              <label>Project</label>
+              {projectsError && (
+                <div className="auth-error" style={{ marginBottom: '8px' }}>
+                  {projectsError}
+                </div>
+              )}
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                disabled={isSaving || saveSuccess || projectsLoading}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', background: projectsLoading ? '#f0f0f0' : undefined }}
+              >
+                <option value="">No project</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {projectsLoading && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: '#6c757d' }}>Loading projects…</div>
+              )}
+            </div>
+
+            <div className="auth-field">
               <label>Language</label>
               <input
                 type="text"
@@ -583,17 +600,21 @@ export const CrxRecorder: React.FC = ({
     )}
 
     <div className='recorder'>
+      {/* Authentication status and logout */}
+      {isAuthenticated && (
+        <div className="auth-status">
+          <div className="authenticated">
+            <span className="status-indicator">Signed in as {userEmail || 'current user'}</span>
+            <button className="logout-btn" onClick={handleLogout}>Logout</button>
+          </div>
+        </div>
+      )}
       {settings.experimental && <>
         <Toolbar>
           <ToolbarButton icon='save' title='Save to File' disabled={false} onClick={saveCode}>Save File</ToolbarButton>
           <ToolbarButton icon='cloud-upload' title='Save to Database' disabled={false} onClick={saveToDatabase}>Save DB</ToolbarButton>
           <ToolbarSeparator />
           <ToolbarButton icon='debug-console' title='Test Executor' disabled={false} onClick={toggleTestExecutor}>Execute</ToolbarButton>
-          <ToolbarButton icon='debug-alt' title='Debugger' disabled={false} onClick={toggleDebugger}>Debug</ToolbarButton>
-          <ToolbarButton icon='plug' title='API Testing' disabled={false} onClick={toggleApiTesting}>API</ToolbarButton>
-          <ToolbarButton icon='sparkle' title='Self-Healing' disabled={false} onClick={toggleSelfHealing}>Heal</ToolbarButton>
-          <ToolbarButton icon='brain' title='AI Self-Healing' disabled={false} onClick={toggleAISelfHealing}>AI</ToolbarButton>
-          <ToolbarButton icon='database' title='Data-Driven Testing' disabled={false} onClick={toggleDDT}>Data</ToolbarButton>
           <div style={{ flex: 'auto' }}></div>
           <div className='dropdown'>
             <ToolbarButton icon='tools' title='Tools' disabled={false} onClick={() => {}}></ToolbarButton>
@@ -608,40 +629,9 @@ export const CrxRecorder: React.FC = ({
       <Recorder sources={sources} paused={paused} log={log} mode={mode} onEditedCode={dispatchEditedCode} onCursorActivity={dispatchCursorActivity} />
 
       {/* Enhanced Features Panels */}
-      {showSelfHealing && (
-        <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '100%', background: 'var(--vscode-sideBar-background)', borderLeft: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
-          <SelfHealingUI onClose={toggleSelfHealing} />
-        </div>
-      )}
-
-      {showAISelfHealing && (
-        <div style={{ position: 'absolute', top: 0, right: 0, width: '550px', height: '100%', background: 'var(--vscode-sideBar-background)', borderLeft: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
-          <AISelfHealingUI onClose={toggleAISelfHealing} />
-        </div>
-      )}
-
-      {showDDT && (
-        <div style={{ position: 'absolute', top: 0, right: 0, width: '500px', height: '100%', background: 'var(--vscode-sideBar-background)', borderLeft: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
-          <DDTManager onFileSelected={(fileId) => console.log('Selected file:', fileId)} />
-          <button onClick={toggleDDT} style={{ position: 'absolute', top: '10px', right: '10px' }}>Close</button>
-        </div>
-      )}
-
-      {showDebugger && (
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '300px', background: 'var(--vscode-sideBar-background)', borderTop: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
-          <DebuggerUI onClose={toggleDebugger} />
-        </div>
-      )}
-
       {showTestExecutor && (
         <div style={{ position: 'absolute', top: 0, right: 0, width: '450px', height: '100%', background: 'var(--vscode-sideBar-background)', borderLeft: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
           <TestExecutorUI onClose={toggleTestExecutor} script={source?.text || ''} scriptName={selectedFileId} />
-        </div>
-      )}
-
-      {showApiTesting && (
-        <div style={{ position: 'absolute', top: 0, right: 0, width: '550px', height: '100%', background: 'var(--vscode-sideBar-background)', borderLeft: '1px solid var(--vscode-panel-border)', zIndex: 1000, overflow: 'auto' }}>
-          <ApiTestingUI onClose={toggleApiTesting} />
         </div>
       )}
     </div>

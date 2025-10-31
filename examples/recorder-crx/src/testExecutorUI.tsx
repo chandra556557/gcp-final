@@ -16,20 +16,19 @@
 
 import * as React from 'react';
 import { testExecutor, TestRun, ExecutionProgress } from './testExecutor';
-import { ddtService } from './ddtService';
 import { apiService, Script } from './apiService';
-import { realDataIntegration } from './realDataIntegration';
+// Self-healing integration removed
 
 interface TestExecutorPanelProps {
   scriptId?: string;
+  scriptCode?: string;
+  scriptLanguage?: string;
   onDataDrivenExecution?: (testRunId: string) => void;
   onClose?: () => void;
 }
 
-export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, onDataDrivenExecution, onClose }) => {
+export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, scriptCode, scriptLanguage, onDataDrivenExecution, onClose }) => {
   const [testRuns, setTestRuns] = React.useState<TestRun[]>([]);
-  const [selectedDataFile, setSelectedDataFile] = React.useState<string>('');
-  const [dataFiles, setDataFiles] = React.useState<any[]>([]);
   const [isExecuting, setIsExecuting] = React.useState<boolean>(false);
   const [progress, setProgress] = React.useState<ExecutionProgress | null>(null);
   const [logs, setLogs] = React.useState<string[]>([]);
@@ -62,32 +61,15 @@ export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, 
     }
   }, []);
 
-  // Load data files and saved scripts on component mount
+  // Load saved scripts on component mount
   React.useEffect(() => {
-    const loadData = async () => {
-      await loaddataFiles();
-      await loadSavedScripts();
-    };
-    loadData();
+    loadSavedScripts();
 
-    // Start listening for self-healing events
-    realDataIntegration.startListening();
-    console.log('✅ Self-healing integration started');
-
-    return () => {
-      realDataIntegration.stopListening();
-      console.log('🛑 Self-healing integration stopped');
-    };
+    // Self-healing integration removed
+    return () => {};
   }, [loadSavedScripts]);
 
-  const loaddataFiles = async () => {
-    try {
-      const files = await ddtService.getDataFiles();
-      setDataFiles(files);
-    } catch (error) {
-      // Error loading data files
-    }
-  };
+
 
   const handleScriptSelect = async (script: Script) => {
     setSelectedScript(script);
@@ -132,15 +114,35 @@ export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, 
   };
 
   const handleExecute = async () => {
-    if (isExecuting || !scriptId)
+    if (isExecuting)
       return;
+
+    // Check if we have either a script ID or current script code
+    if (!scriptId && !scriptCode) {
+      setProgress({
+        status: 'failed',
+        error: 'No script available to execute'
+      });
+      return;
+    }
 
     setIsExecuting(true);
     setProgress(null);
     setLogs([]);
 
     try {
-      const testRun = await testExecutor.executeTest(scriptId);
+      let testRun: TestRun;
+
+      if (scriptCode && scriptLanguage) {
+        // Execute current script code directly
+        testRun = await testExecutor.executeCurrentScript(scriptCode, scriptLanguage);
+      } else if (scriptId) {
+        // Execute saved script from database
+        testRun = await testExecutor.executeTest(scriptId);
+      } else {
+        throw new Error('No script available to execute');
+      }
+
       setActiveTestRunId(testRun.id);
 
       // Add progress callback
@@ -165,44 +167,7 @@ export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, 
     }
   };
 
-  const handleDataDrivenExecute = async () => {
-    if (isExecuting || !selectedDataFile || !scriptId)
-      return;
 
-    setIsExecuting(true);
-    setProgress(null);
-    setLogs([]);
-
-    try {
-      const testRun = await testExecutor.executeDataDrivenTest(scriptId, selectedDataFile);
-      setActiveTestRunId(testRun.id);
-
-      // Add progress callback
-      testExecutor.addProgressCallback(testRun.id, progress => {
-        setProgress(progress);
-      });
-
-      // Add log callback
-      testExecutor.addLogCallback(testRun.id, log => {
-        setLogs(prev => [...prev, log]);
-      });
-
-      // Add to test runs
-      setTestRuns(prev => [testRun, ...prev]);
-
-      // Notify parent
-      if (onDataDrivenExecution)
-        onDataDrivenExecution(testRun.id);
-
-    } catch (error: any) {
-      setProgress({
-        status: 'failed',
-        error: error?.message || 'Execution failed'
-      });
-    } finally {
-      setIsExecuting(false);
-    }
-  };
 
   const handleCancel = async () => {
     if (!activeTestRunId)
@@ -320,34 +285,12 @@ export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, 
         {/* Current Script Execution */}
         <button
           onClick={handleExecute}
-          disabled={isExecuting || !scriptId}
+          disabled={isExecuting || (!scriptId && !scriptCode)}
           className='execute-btn'
           title='Execute the currently recorded script'
         >
           {isExecuting ? 'Executing...' : '▶️ Execute Current Script'}
         </button>
-
-        <div className='data-driven-controls'>
-          <select
-            value={selectedDataFile}
-            onChange={e => setSelectedDataFile(e.target.value)}
-            disabled={isExecuting}
-          >
-            <option value=''>Select data file for DDT</option>
-            {dataFiles.map(file => (
-              <option key={file.id} value={file.id}>
-                {file.name} ({file.rowCount} rows)
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={handleDataDrivenExecute}
-            disabled={isExecuting || !selectedDataFile}
-            className='ddt-execute-btn'
-          >
-            {isExecuting ? 'Executing...' : 'Execute with Data'}
-          </button>
-        </div>
 
         {activeTestRunId && (
           <button
@@ -424,5 +367,5 @@ export const TestExecutorPanel: React.FC<TestExecutorPanelProps> = ({ scriptId, 
 
 // Export a simple wrapper
 export const TestExecutorUI: React.FC<{ onClose?: () => void; script?: string; scriptName?: string }> = ({ onClose, script, scriptName }) => {
-  return <TestExecutorPanel scriptId={scriptName || 'current'} onClose={onClose} />;
+  return <TestExecutorPanel scriptId={undefined} scriptCode={script} scriptLanguage={scriptName} onClose={onClose} />;
 };

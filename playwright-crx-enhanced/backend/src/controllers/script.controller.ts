@@ -10,17 +10,26 @@ import { randomUUID } from 'crypto';
 export const getScripts = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
+    const { projectId } = req.query;
 
-    const { rows } = await pool.query(
-      `SELECT s.id, s.name, s.description, s.language, s."browserType" as "browserType",
+    let query = `SELECT s.id, s.name, s.description, s.language, s."browserType" as "browserType",
               s."createdAt" as "createdAt", s."updatedAt" as "updatedAt", s."projectId" as "projectId",
-              p.name AS "projectName"
+              p.name AS "projectName", u.name AS "userName", u.email AS "userEmail"
        FROM "Script" s
        LEFT JOIN "Project" p ON p.id = s."projectId"
-       WHERE s."userId" = $1
-       ORDER BY s."createdAt" DESC`,
-      [userId]
-    );
+       LEFT JOIN "User" u ON u.id = s."userId"
+       WHERE s."userId" = $1`;
+    
+    const params = [userId];
+    
+    if (projectId) {
+      query += ` AND s."projectId" = $2`;
+      params.push(projectId as string);
+    }
+    
+    query += ` ORDER BY s."createdAt" DESC`;
+
+    const { rows } = await pool.query(query, params);
 
     const scripts = rows.map(r => ({
       id: r.id,
@@ -31,7 +40,8 @@ export const getScripts = async (req: Request, res: Response) => {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       projectId: r.projectId,
-      project: r.projectName ? { name: r.projectName } : null
+      project: r.projectName ? { name: r.projectName } : null,
+      user: { name: r.userName || 'Unknown User', email: r.userEmail || '' }
     }));
 
     res.status(200).json({

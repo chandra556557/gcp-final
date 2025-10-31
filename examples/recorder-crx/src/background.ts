@@ -19,7 +19,6 @@ import type { CrxApplication } from 'playwright-crx';
 import playwright, { crx, _debug, _setUnderTest, _isUnderTest as isUnderTest } from 'playwright-crx';
 import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings } from './settings';
-import { selfHealingService } from './selfHealing';
 import { apiTestingService } from './apiTestingService';
 import type { ApiRequest, ApiResponse } from './apiTestingService';
 
@@ -226,8 +225,6 @@ chrome.runtime.onInstalled.addListener(details => {
     chrome.tabs.create({ url: `https://github.com/ruifigueira/playwright-crx/releases/tag/v${chrome.runtime.getManifest().version}` }).catch(() => {});
 });
 
-// Initialize self-healing service
-selfHealingService.loadStrategies().catch(() => {});
 
 /**
  * Start recording API requests using debugger API for full capture

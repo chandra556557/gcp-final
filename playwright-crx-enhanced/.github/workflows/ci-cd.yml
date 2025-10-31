@@ -182,5 +182,5 @@ jobs:
         uses: treosh/lighthouse-ci-action@v10
         with:
           urls: |
-            http://localhost:3000/health
+            http://localhost:3001/health
           uploadArtifacts: true

@@ -13,7 +13,7 @@ export const handshake = async (req: Request, res: Response) => {
       success: true,
       serverVersion: '1.0.0',
       capabilities: {
-        selfHealing: true,
+        selfHealing: false,
         dataDriverTesting: true,
         testExecution: true,
         scriptStorage: true,

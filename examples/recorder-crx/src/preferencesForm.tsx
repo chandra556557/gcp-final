@@ -36,7 +36,8 @@ export const PreferencesForm: React.FC = ({}) => {
       initialSettings.targetLanguage !== settings.targetLanguage ||
       initialSettings.testIdAttributeName !== settings.testIdAttributeName ||
       initialSettings.playInIncognito !== settings.playInIncognito ||
-      initialSettings.experimental !== settings.experimental;
+      initialSettings.experimental !== settings.experimental ||
+      initialSettings.apiBaseUrl !== settings.apiBaseUrl;
   }, [settings, initialSettings]);
 
   const saveSettings = React.useCallback((e: React.FormEvent<HTMLFormElement>) => {
@@ -51,26 +52,14 @@ export const PreferencesForm: React.FC = ({}) => {
 
   return <form id='preferences-form' onSubmit={saveSettings}>
     <label htmlFor='target-language'>Default language:</label>
-    <select id='target-language' name='target-language' value={settings.targetLanguage} onChange={e => setSettings({ ...settings, targetLanguage: e.target.selectedOptions[0].value })}>
-      <optgroup label='Node.js'>
-        <option value='javascript'>Library</option>
-        <option value='playwright-test'>Test Runner</option>
-      </optgroup>
-      <optgroup label='Java'>
-        <option value='java-junit'>JUnit</option>
-        <option value='java'>Library</option>
-      </optgroup>
-      <optgroup label='Python'>
-        <option value='python-pytest'>Pytest</option>
-        <option value='python'>Library</option>
-        <option value='python-async'>Library Async</option>
-      </optgroup>
-      <optgroup label='.NET C#'>
-        <option value='csharp-mstest'>MSTest</option>
-        <option value='csharp-nunit'>NUnit</option>
-        <option value='csharp'>Library</option>
-      </optgroup>
-    </select>
+    <input
+      id='target-language'
+      name='target-language'
+      type='text'
+      value='Test Runner'
+      disabled
+      style={{ background: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', opacity: 0.7, cursor: 'not-allowed' }}
+    />
     <label htmlFor='test-id'>TestID Attribute Name:</label>
     <input
       type='text'
@@ -114,6 +103,17 @@ export const PreferencesForm: React.FC = ({}) => {
         onChange={e => setSettings({ ...settings, experimental: e.target.checked })}
       />
     </div>
+    <label htmlFor='api-base-url'>API Base URL:</label>
+    <input
+      type='url'
+      id='api-base-url'
+      name='api-base-url'
+      placeholder='http://localhost:3001/api'
+      pattern='https?://.+'
+      title='Must be a valid http(s) URL'
+      value={settings.apiBaseUrl}
+      onChange={e => setSettings({ ...settings, apiBaseUrl: e.target.value })}
+    />
     <button id='submit' type='submit' disabled={!canSave}>{canSave ? 'Save' : 'Saved'}</button>
   </form>;
 };

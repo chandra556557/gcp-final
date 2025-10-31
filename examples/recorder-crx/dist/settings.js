@@ -3,12 +3,13 @@ const defaultSettings = {
   targetLanguage: "playwright-test",
   sidepanel: true,
   experimental: false,
-  playInIncognito: false
+  playInIncognito: false,
+  apiBaseUrl: "http://localhost:3001/api"
 };
 async function loadSettings() {
   const [isAllowedIncognitoAccess, loadedPreferences] = await Promise.all([
     chrome.extension.isAllowedIncognitoAccess(),
-    chrome.storage.sync.get(["testIdAttributeName", "targetLanguage", "sidepanel", "playInIncognito", "experimental"])
+    chrome.storage.sync.get(["testIdAttributeName", "targetLanguage", "sidepanel", "playInIncognito", "experimental", "apiBaseUrl"])
   ]);
   return { ...defaultSettings, ...loadedPreferences, playInIncognito: !!loadedPreferences.playInIncognito && isAllowedIncognitoAccess };
 }
@@ -17,8 +18,8 @@ async function storeSettings(settings) {
 }
 const listeners = /* @__PURE__ */ new Map();
 function addSettingsChangedListener(listener) {
-  const wrappedListener = ({ testIdAttributeName, targetLanguage, sidepanel, playInIncognito, experimental }) => {
-    if (!testIdAttributeName && !targetLanguage && sidepanel && playInIncognito && experimental)
+  const wrappedListener = ({ testIdAttributeName, targetLanguage, sidepanel, playInIncognito, experimental, apiBaseUrl }) => {
+    if (!testIdAttributeName && !targetLanguage && sidepanel && playInIncognito && experimental && !apiBaseUrl)
       return;
     loadSettings().then(listener).catch(() => {
     });

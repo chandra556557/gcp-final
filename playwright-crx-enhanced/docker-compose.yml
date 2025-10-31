@@ -35,7 +35,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-change-this}
       PORT: 3000
       NODE_ENV: production
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-chrome-extension://*,http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-chrome-extension://*,http://localhost:3001}
     ports:
       - "3000:3000"
     depends_on:

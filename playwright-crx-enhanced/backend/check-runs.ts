@@ -2,7 +2,7 @@ import pool from './src/db';
 
 async function checkTestRuns() {
   const { rows: runs } = await pool.query(
-    `SELECT tr.id, tr.status, tr."allureReportUrl", tr."startedAt", s.name AS script_name
+    `SELECT tr.id, tr.status, tr."executionReportUrl", tr."startedAt", s.name AS script_name
      FROM "TestRun" tr JOIN "Script" s ON s.id = tr."scriptId"
      ORDER BY tr."startedAt" DESC
      LIMIT 5`
@@ -15,7 +15,7 @@ async function checkTestRuns() {
     console.log(`${index + 1}. Test Run ID: ${run.id}`);
     console.log(`   Script: ${run.script_name}`);
     console.log(`   Status: ${run.status}`);
-    console.log(`   Allure Report URL: ${run.allureReportUrl || 'NOT SET'}`);
+    console.log(`   Execution Report URL: ${run.executionReportUrl || 'NOT SET'}`);
     console.log(`   Started: ${run.startedAt}`);
     console.log('');
   });

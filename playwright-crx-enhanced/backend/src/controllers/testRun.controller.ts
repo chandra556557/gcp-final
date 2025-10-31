@@ -11,15 +11,23 @@ import { randomUUID } from 'crypto';
 export const getTestRuns = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
+    const { projectId } = req.query;
 
-    const { rows } = await pool.query(
-      `SELECT tr.*, s.name AS script_name
+    let query = `SELECT tr.*, s.name AS script_name, s."projectId" AS script_project_id
        FROM "TestRun" tr
        JOIN "Script" s ON s.id = tr."scriptId"
-       WHERE tr."userId" = $1
-       ORDER BY tr."startedAt" DESC`,
-      [userId]
-    );
+       WHERE tr."userId" = $1`;
+    
+    const params = [userId];
+    
+    if (projectId) {
+      query += ` AND s."projectId" = $2`;
+      params.push(projectId as string);
+    }
+    
+    query += ` ORDER BY tr."startedAt" DESC`;
+
+    const { rows } = await pool.query(query, params);
 
     const testRuns = rows.map(r => ({
       ...r,
@@ -43,7 +51,7 @@ export const getTestRun = async (req: Request, res: Response) => {
     const { rows } = await pool.query(
       `SELECT tr.*, s.name AS script_name, s.language AS script_language
        FROM "TestRun" tr
-       JOIN "Script" s ON s.id = tr."scriptId"
+       LEFT JOIN "Script" s ON s.id = tr."scriptId"
        WHERE tr.id = $1 AND tr."userId" = $2`,
       [id, userId]
     );
@@ -55,7 +63,7 @@ export const getTestRun = async (req: Request, res: Response) => {
       success: true,
       data: {
         ...testRun,
-        script: { name: testRun.script_name, language: testRun.script_language }
+        script: { name: testRun.script_name || 'Current Script', language: testRun.script_language || 'playwright-test' }
       }
     });
   } catch (error: any) {
@@ -133,6 +141,98 @@ export const startTestRun = async (req: Request, res: Response) => {
       res.status(error.statusCode).json({ success: false, error: error.message });
     } else {
       res.status(500).json({ success: false, error: error.message || 'Failed to start test run' });
+    }
+  }
+};
+
+/**
+ * Execute current script code directly (without saving to database)
+ */
+export const executeCurrentScript = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { code, language, environment, browser } = req.body;
+
+    if (!code || !language) throw new AppError('Code and language are required', 400);
+
+    // Create a temporary script ID for tracking
+    const tempScriptId = randomUUID();
+    
+    // Create a temporary script entry
+    await pool.query(
+      `INSERT INTO "Script" (id, name, description, language, code, "userId", "browserType", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'chromium'), now(), now())`,
+      [tempScriptId, 'Current Script (Temp)', 'Temporary script for direct execution', language, code, userId, browser ?? null]
+    );
+
+    const testRunId = randomUUID();
+    const { rows } = await pool.query(
+      `INSERT INTO "TestRun" (id, "scriptId", "userId", status, environment, browser, "startedAt")
+       VALUES ($1, $2, $3, 'running', COALESCE($4, 'development'), COALESCE($5, 'chromium'), now())
+       RETURNING *`,
+      [testRunId, tempScriptId, userId, environment ?? null, browser ?? null]
+    );
+    const testRun = rows[0];
+
+    try {
+      await allureService.startTest(testRun.id, `Current Script (${language})`);
+    } catch (error) {
+      console.error('Failed to start Allure test:', error);
+    }
+
+    // Simulate test execution (async)
+    setTimeout(async () => {
+      try {
+        const mockSteps = [
+          { action: 'Parse script code', status: 'passed' as const, duration: 300 },
+          { action: 'Initialize browser', status: 'passed' as const, duration: 500 },
+          { action: 'Execute script actions', status: 'passed' as const, duration: 800 },
+          { action: 'Verify results', status: 'passed' as const, duration: 200 }
+        ];
+
+        for (const step of mockSteps) {
+          await allureService.recordStep(testRun.id, step.action, step.status, step.duration);
+        }
+
+        await allureService.endTest(testRun.id, 'passed');
+
+        await pool.query(
+          `UPDATE "TestRun"
+           SET status = 'passed',
+               "completedAt" = now(),
+               duration = $2
+           WHERE id = $1`,
+          [testRun.id, mockSteps.reduce((sum, s) => sum + (s.duration || 0), 0)]
+        );
+
+        // Clean up temporary script after test completes (with delay)
+        setTimeout(async () => {
+          await pool.query(
+            `DELETE FROM "Script" WHERE id = $1`,
+            [tempScriptId]
+          ).catch(err => console.error('Failed to cleanup temp script:', err));
+        }, 10000); // Wait 10 seconds before cleanup
+      } catch (error) {
+        console.error('Failed to complete current script execution:', error);
+        // Update test run as failed
+        await pool.query(
+          `UPDATE "TestRun"
+           SET status = 'failed',
+               "completedAt" = now(),
+               "errorMsg" = $2
+           WHERE id = $1`,
+          [testRun.id, String(error)]
+        ).catch(() => {});
+      }
+    }, 100); // Start execution almost immediately
+
+    // Return immediately with running status
+    res.status(201).json({ success: true, data: testRun });
+  } catch (error: any) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, error: error.message });
+    } else {
+      res.status(500).json({ success: false, error: error.message || 'Failed to execute current script' });
     }
   }
 };

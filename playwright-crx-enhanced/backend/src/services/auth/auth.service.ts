@@ -6,7 +6,7 @@ import pool from '../../db';
 
 
 interface TokenPayload {
-  userId: string;
+  userId: string | number;
   email: string;
   type: 'access' | 'refresh';
 }
@@ -28,19 +28,32 @@ export class AuthService {
    * Register a new user
    */
   async register(email: string, password: string, name: string) {
-    const existing = await pool.query('SELECT id FROM "User" WHERE email = $1', [email]);
+    let existing;
+    try {
+      existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    } catch (_err) {
+      existing = await pool.query('SELECT id FROM "User" WHERE email = $1', [email]);
+    }
     if (existing.rowCount && existing.rows[0]) {
       throw new Error('User already exists with this email');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = randomUUID();
-
-    const insertUser = await pool.query(
-      'INSERT INTO "User"(id,email,password,name,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,now(),now()) RETURNING id,email,name',
-      [userId, email, hashedPassword, name]
-    );
-    const user = insertUser.rows[0];
+    let user;
+    try {
+      const insertUser = await pool.query(
+        'INSERT INTO users(email, password, name) VALUES ($1,$2,$3) RETURNING id,email,name',
+        [email, hashedPassword, name]
+      );
+      user = insertUser.rows[0];
+    } catch (_err) {
+      const userId = randomUUID();
+      const insertUser = await pool.query(
+        'INSERT INTO "User"(id,email,password,name,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,now(),now()) RETURNING id,email,name',
+        [userId, email, hashedPassword, name]
+      );
+      user = insertUser.rows[0];
+    }
 
     logger.info(`New user registered: ${email}`);
 
@@ -62,10 +75,18 @@ export class AuthService {
    * Login user
    */
   async login(email: string, password: string) {
-    const userRes = await pool.query(
-      'SELECT id,email,password,name FROM "User" WHERE email = $1',
-      [email]
-    );
+    let userRes;
+    try {
+      userRes = await pool.query(
+        'SELECT id,email,password,name FROM users WHERE email = $1',
+        [email]
+      );
+    } catch (_err) {
+      userRes = await pool.query(
+        'SELECT id,email,password,name FROM "User" WHERE email = $1',
+        [email]
+      );
+    }
     const user = userRes.rows[0];
     if (!user) {
       throw new Error('Invalid credentials');
@@ -102,19 +123,33 @@ export class AuthService {
         throw new Error('Invalid token type');
       }
 
-      const tokenRes = await pool.query(
-        `SELECT id FROM "RefreshToken"
-         WHERE token = $1 AND "userId" = $2 AND "expiresAt" > now() AND revokedAt IS NULL`,
-        [refreshToken, decoded.userId]
-      );
+      let tokenRes;
+      try {
+        tokenRes = await pool.query(
+          `SELECT id FROM "RefreshToken"
+           WHERE token = $1 AND "userId" = $2 AND "expiresAt" > now() AND revokedAt IS NULL`,
+          [refreshToken, decoded.userId]
+        );
+      } catch (err) {
+        logger.warn('RefreshToken table missing or inaccessible; treating token as invalid');
+        throw new Error('Invalid or expired refresh token');
+      }
       if (!tokenRes.rowCount) {
         throw new Error('Invalid or expired refresh token');
       }
 
-      const userRes = await pool.query(
-        'SELECT id,email FROM "User" WHERE id = $1',
-        [decoded.userId]
-      );
+      let userRes;
+      try {
+        userRes = await pool.query(
+          'SELECT id,email FROM users WHERE id = $1',
+          [decoded.userId]
+        );
+      } catch (_err) {
+        userRes = await pool.query(
+          'SELECT id,email FROM "User" WHERE id = $1',
+          [decoded.userId]
+        );
+      }
       const user = userRes.rows[0];
       if (!user) {
         throw new Error('User not found');
@@ -136,10 +171,14 @@ export class AuthService {
    */
   async logout(refreshToken: string) {
     try {
-      await pool.query(
-        'UPDATE "RefreshToken" SET revokedAt = now() WHERE token = $1',
-        [refreshToken]
-      );
+      try {
+        await pool.query(
+          'UPDATE "RefreshToken" SET revokedAt = now() WHERE token = $1',
+          [refreshToken]
+        );
+      } catch (err) {
+        logger.warn('RefreshToken table missing; skip revoke');
+      }
       logger.info('User logged out');
       return true;
     } catch (error) {
@@ -151,14 +190,18 @@ export class AuthService {
   /**
    * Generate access and refresh tokens
    */
-  private async generateTokens(userId: string, email: string) {
+  private async generateTokens(userId: string | number, email: string) {
     const accessToken = this.generateAccessToken(userId, email);
     const refreshToken = this.generateRefreshToken(userId);
 
-    await pool.query(
-      'INSERT INTO "RefreshToken"(id,token,"userId","expiresAt","createdAt") VALUES ($1,$2,$3,$4,now())',
-      [randomUUID(), refreshToken, userId, new Date(Date.now() + 15 * 60 * 60 * 1000)]
-    );
+    try {
+      await pool.query(
+        'INSERT INTO "RefreshToken"(id,token,"userId","expiresAt","createdAt") VALUES ($1,$2,$3,$4,now())',
+        [randomUUID(), refreshToken, userId, new Date(Date.now() + 15 * 60 * 60 * 1000)]
+      );
+    } catch (err) {
+      logger.warn('RefreshToken table missing; proceeding without storing refresh token');
+    }
 
     return { accessToken, refreshToken };
   }
@@ -166,7 +209,7 @@ export class AuthService {
   /**
    * Generate access token
    */
-  private generateAccessToken(userId: string, email: string): string {
+  private generateAccessToken(userId: string | number, email: string): string {
     return jwt.sign(
       { userId, email, type: 'access' },
       this.accessTokenSecret,
@@ -177,7 +220,7 @@ export class AuthService {
   /**
    * Generate refresh token
    */
-  private generateRefreshToken(userId: string): string {
+  private generateRefreshToken(userId: string | number): string {
     return jwt.sign(
       { userId, type: 'refresh' },
       this.refreshTokenSecret,
@@ -204,11 +247,16 @@ export class AuthService {
    * Clean up expired refresh tokens
    */
   async cleanupExpiredTokens() {
-    const result = await pool.query(
-      'DELETE FROM "RefreshToken" WHERE "expiresAt" < now()'
-    );
-    logger.info(`Cleaned up ${result.rowCount} expired tokens`);
-    return result.rowCount;
+    try {
+      const result = await pool.query(
+        'DELETE FROM "RefreshToken" WHERE "expiresAt" < now()'
+      );
+      logger.info(`Cleaned up ${result.rowCount} expired tokens`);
+      return result.rowCount;
+    } catch (err) {
+      logger.warn('RefreshToken table missing; skipping cleanup');
+      return 0;
+    }
   }
 }
 

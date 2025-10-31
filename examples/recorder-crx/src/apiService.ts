@@ -15,7 +15,7 @@
  */
 
 // Configuration
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 export interface ApiConfig {
   baseUrl: string;
@@ -41,11 +41,18 @@ export interface Script {
   browserType?: string;
   viewport?: { width: number; height: number };
   testIdAttribute?: string;
-  selfHealingEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
   projectId?: string;
   project?: { name: string };
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 export interface TestRun {
@@ -83,6 +90,21 @@ export class ApiService {
     this.config = {
       baseUrl: config?.baseUrl || API_BASE_URL
     };
+
+    // Load base URL from synced settings if available
+    chrome.storage.sync.get(['apiBaseUrl']).then(result => {
+      if (result && result.apiBaseUrl) {
+        this.config.baseUrl = result.apiBaseUrl as string;
+      }
+    }).catch(() => {});
+
+    // React to settings changes in real-time
+    chrome.storage.sync.onChanged.addListener(changes => {
+      if (changes.apiBaseUrl) {
+        const newValue = changes.apiBaseUrl.newValue as string | undefined;
+        this.config.baseUrl = newValue || API_BASE_URL;
+      }
+    });
   }
 
   /**
@@ -273,6 +295,14 @@ export class ApiService {
   }
 
   /**
+   * Get projects for current user
+   */
+  async getProjects(): Promise<Project[]> {
+    const response = await this.request<{ success: boolean; data: Project[] }>('/projects');
+    return response.data || [];
+  }
+
+  /**
    * Get a specific script
    */
   async getScript(id: string): Promise<Script> {
@@ -283,10 +313,10 @@ export class ApiService {
   /**
    * Create a new script
    */
-  async createScript(name: string, code: string, language: string, description?: string): Promise<Script> {
+  async createScript(name: string, code: string, language: string, description?: string, projectId?: string): Promise<Script> {
     const response = await this.request<{ success: boolean; data: Script }>('/scripts', {
       method: 'POST',
-      body: JSON.stringify({ name, code, language, description })
+      body: JSON.stringify({ name, code, language, description, projectId })
     });
     return response.data;
   }
@@ -318,6 +348,17 @@ export class ApiService {
     const response = await this.request<{ success: boolean; data: TestRun }>('/test-runs/start', {
       method: 'POST',
       body: JSON.stringify({ scriptId, dataFileId, environment, browser })
+    });
+    return response.data;
+  }
+
+  /**
+   * Execute current script code directly (without saving to database)
+   */
+  async executeCurrentScript(code: string, language: string, environment?: string, browser?: string): Promise<TestRun> {
+    const response = await this.request<{ success: boolean; data: TestRun }>('/test-runs/execute-current', {
+      method: 'POST',
+      body: JSON.stringify({ code, language, environment, browser })
     });
     return response.data;
   }

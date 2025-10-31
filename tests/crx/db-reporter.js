@@ -1,6 +1,6 @@
 class DbReporter {
   constructor() {
-    this.backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3100';
+    this.backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3001';
     this.email = process.env.BACKEND_EMAIL;
     this.password = process.env.BACKEND_PASSWORD;
     this.token = null;

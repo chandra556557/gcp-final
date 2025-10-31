@@ -7069,7 +7069,7 @@ const PreferencesForm = ({}) => {
     chrome.extension.isAllowedIncognitoAccess().then(setIsAllowedIncognitoAccess);
   }, []);
   const canSave = React.useMemo(() => {
-    return initialSettings.sidepanel !== settings.sidepanel || initialSettings.targetLanguage !== settings.targetLanguage || initialSettings.testIdAttributeName !== settings.testIdAttributeName || initialSettings.playInIncognito !== settings.playInIncognito || initialSettings.experimental !== settings.experimental;
+    return initialSettings.sidepanel !== settings.sidepanel || initialSettings.targetLanguage !== settings.targetLanguage || initialSettings.testIdAttributeName !== settings.testIdAttributeName || initialSettings.playInIncognito !== settings.playInIncognito || initialSettings.experimental !== settings.experimental || initialSettings.apiBaseUrl !== settings.apiBaseUrl;
   }, [settings, initialSettings]);
   const saveSettings = React.useCallback((e) => {
     if (!e.currentTarget.reportValidity())
@@ -7080,26 +7080,17 @@ const PreferencesForm = ({}) => {
   }, [settings]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { id: "preferences-form", onSubmit: saveSettings, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "target-language", children: "Default language:" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("select", { id: "target-language", name: "target-language", value: settings.targetLanguage, onChange: (e) => setSettings({ ...settings, targetLanguage: e.target.selectedOptions[0].value }), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("optgroup", { label: "Node.js", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "javascript", children: "Library" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "playwright-test", children: "Test Runner" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("optgroup", { label: "Java", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "java-junit", children: "JUnit" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "java", children: "Library" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("optgroup", { label: "Python", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "python-pytest", children: "Pytest" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "python", children: "Library" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "python-async", children: "Library Async" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("optgroup", { label: ".NET C#", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "csharp-mstest", children: "MSTest" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "csharp-nunit", children: "NUnit" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "csharp", children: "Library" })
-      ] })
-    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        id: "target-language",
+        name: "target-language",
+        type: "text",
+        value: "Test Runner",
+        disabled: true,
+        style: { background: "var(--vscode-input-background)", color: "var(--vscode-input-foreground)", opacity: 0.7, cursor: "not-allowed" }
+      }
+    ),
     /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "test-id", children: "TestID Attribute Name:" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "input",
@@ -7155,6 +7146,20 @@ const PreferencesForm = ({}) => {
         }
       )
     ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "api-base-url", children: "API Base URL:" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        type: "url",
+        id: "api-base-url",
+        name: "api-base-url",
+        placeholder: "http://localhost:3001/api",
+        pattern: "https?://.+",
+        title: "Must be a valid http(s) URL",
+        value: settings.apiBaseUrl,
+        onChange: (e) => setSettings({ ...settings, apiBaseUrl: e.target.value })
+      }
+    ),
     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { id: "submit", type: "submit", disabled: !canSave, children: canSave ? "Save" : "Saved" })
   ] });
 };

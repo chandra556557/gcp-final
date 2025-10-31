@@ -13,10 +13,9 @@ import authRoutes from './routes/auth.routes';
 import scriptRoutes from './routes/script.routes';
 import projectRoutes from './routes/project.routes';
 import testRunRoutes from './routes/testRun.routes';
-import selfHealingRoutes from './routes/selfHealing.routes';
-import ddtRoutes from './routes/ddt.routes';
 import extensionRoutes from './routes/extension.routes';
 import allureRoutes from './routes/allure.routes';
+import apiTestingRoutes from './routes/apiTesting.routes';
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -28,7 +27,7 @@ dotenv.config();
 const app: Application = express();
 const httpServer = createServer(app);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Security
@@ -54,10 +53,8 @@ const defaultOrigins = [
   'chrome-extension://*',
   'ms-browser-extension://*',
   'edge-extension://*',
-  'http://localhost:3000',
-  'http://localhost:3100',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3100'
+  'http://localhost:3001',
+  'http://127.0.0.1:3001'
 ];
 const allowedOrigins = envOrigins.length ? envOrigins : defaultOrigins;
 
@@ -112,8 +109,8 @@ app.get('/api', (_req, res) => {
       '/api/projects/*',
       '/api/scripts/*',
       '/api/test-runs/*',
-      '/api/self-healing/*',
-      '/api/test-data/*',
+      // Test data endpoints removed
+      '/api/api-testing/*',
       '/api/extensions/*',
       '/api/allure',
       '/api-docs',
@@ -131,10 +128,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/scripts', scriptRoutes);
 app.use('/api/test-runs', testRunRoutes);
-app.use('/api/self-healing', selfHealingRoutes);
-app.use('/api/test-data', ddtRoutes);
 app.use('/api/extensions', extensionRoutes);
 app.use('/api/allure', allureRoutes);
+app.use('/api/api-testing', apiTestingRoutes);
 
 app.use((_req, res) => { res.status(404).json({ error: 'Route not found' }); });
 app.use(errorHandler);

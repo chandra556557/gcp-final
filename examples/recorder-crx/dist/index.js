@@ -4,7 +4,6 @@ var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { en
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 import { R as React, j as jsxRuntimeExports, r as reactExports, P as PreferencesForm, c as clientExports } from "./form.js";
 import { d as defaultSettings, l as loadSettings, a as addSettingsChangedListener, r as removeSettingsChangedListener } from "./settings.js";
-import { a as aiSelfHealingService, s as selfHealingService, b as apiTestingService } from "./apiTestingService.js";
 function useMeasure() {
   const ref = React.useRef(null);
   const [measure, setMeasure] = React.useState(new DOMRect(0, 0, 10, 10));
@@ -10062,1840 +10061,7 @@ const SaveCodeForm = ({ suggestedFilename, onSubmit }) => {
     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { id: "submit", type: "submit", disabled: !filename, children: "Save" })
   ] });
 };
-class RealDataIntegration {
-  constructor() {
-    __publicField(this, "activeExecutions", /* @__PURE__ */ new Map());
-    __publicField(this, "isListening", false);
-    this.setupEventListeners();
-  }
-  /**
-   * Set up event listeners for test execution
-   */
-  setupEventListeners() {
-    if (typeof window !== "undefined") {
-      window.addEventListener("testExecutionStarted", this.handleTestStart);
-      window.addEventListener("testExecutionCompleted", this.handleTestComplete);
-      window.addEventListener("locatorFailed", this.handleLocatorFailure);
-      window.addEventListener("locatorHealed", this.handleLocatorHealed);
-    }
-  }
-  /**
-   * Start listening for real test data
-   */
-  startListening() {
-    this.isListening = true;
-    console.log("Real data integration started");
-  }
-  /**
-   * Stop listening for real test data
-   */
-  stopListening() {
-    this.isListening = false;
-    console.log("Real data integration stopped");
-  }
-  /**
-   * Handle test execution start
-   */
-  handleTestStart(event) {
-    const customEvent = event;
-    if (!this.isListening) return;
-    const { testExecution } = customEvent.detail;
-    this.activeExecutions.set(testExecution.id, testExecution);
-  }
-  /**
-   * Handle test execution completion
-   */
-  handleTestComplete(event) {
-    const customEvent = event;
-    if (!this.isListening) return;
-    const { testExecution } = customEvent.detail;
-    const execution = this.activeExecutions.get(testExecution.id);
-    if (execution) {
-      execution.status = testExecution.status;
-      execution.endTime = testExecution.endTime;
-      execution.logs = testExecution.logs;
-      if (execution.failures && execution.failures.length > 0) {
-        this.processFailures(execution);
-      }
-    }
-  }
-  /**
-   * Handle locator failure
-   */
-  handleLocatorFailure(event) {
-    const customEvent = event;
-    if (!this.isListening) return;
-    const { testId, step, locator, error, element } = customEvent.detail;
-    const execution = this.activeExecutions.get(testId);
-    if (execution) {
-      const failure = {
-        id: `failure-${Date.now()}`,
-        step,
-        locator,
-        error,
-        timestamp: /* @__PURE__ */ new Date(),
-        element
-      };
-      if (!execution.failures) {
-        execution.failures = [];
-      }
-      execution.failures.push(failure);
-      this.attemptAutoHealing(execution, failure);
-    }
-  }
-  /**
-   * Handle locator healing
-   */
-  handleLocatorHealed(event) {
-    const customEvent = event;
-    if (!this.isListening) return;
-    const { testId, failureId, healedLocator, success } = customEvent.detail;
-    const execution = this.activeExecutions.get(testId);
-    if (execution && execution.failures) {
-      const failure = execution.failures.find((f) => f.id === failureId);
-      if (failure) {
-        failure.healed = success;
-        failure.healedLocator = healedLocator;
-        this.recordHealingResult(failure, success);
-      }
-    }
-  }
-  /**
-   * Attempt auto-healing for a failure
-   */
-  async attemptAutoHealing(execution, failure) {
-    if (!failure.element) return;
-    try {
-      const config = aiSelfHealingService.getConfig();
-      if (config.enabled) {
-        const aiResult = await aiSelfHealingService.autoHealLocator(
-          failure.locator,
-          failure.element,
-          {
-            url: `test-${execution.scriptId}`,
-            failureReason: failure.error
-          }
-        );
-        if (aiResult.autoApplied) {
-          failure.healed = true;
-          failure.healedLocator = aiResult.healedLocator;
-          this.emitEvent("locatorHealed", {
-            testId: execution.id,
-            failureId: failure.id,
-            healedLocator: aiResult.healedLocator,
-            success: true
-          });
-          return;
-        }
-      }
-      const traditionalResult = await selfHealingService.autoHealLocator(
-        failure.locator,
-        failure.element,
-        {
-          url: `test-${execution.scriptId}`,
-          failureReason: failure.error
-        }
-      );
-      if (traditionalResult.healedLocator) {
-        failure.healed = true;
-        failure.healedLocator = traditionalResult.healedLocator;
-        this.emitEvent("locatorHealed", {
-          testId: execution.id,
-          failureId: failure.id,
-          healedLocator: traditionalResult.healedLocator,
-          success: true
-        });
-      }
-    } catch (error) {
-      console.error("Auto-healing failed:", error);
-      this.recordHealingResult(failure, false);
-    }
-  }
-  /**
-   * Process all failures in a test execution
-   */
-  async processFailures(execution) {
-    if (!execution.failures) return;
-    for (const failure of execution.failures) {
-      if (!failure.healed) {
-        await this.attemptAutoHealing(execution, failure);
-      }
-    }
-  }
-  /**
-   * Record healing result in both services
-   */
-  async recordHealingResult(failure, success) {
-    try {
-      await aiSelfHealingService.recordHealingResult(
-        `failure-${failure.id}`,
-        success,
-        success ? void 0 : failure.error
-      );
-      await selfHealingService.recordHealingResult(
-        `failure-${failure.id}`,
-        success,
-        failure.error
-      );
-    } catch (error) {
-      console.error("Failed to record healing result:", error);
-    }
-  }
-  /**
-   * Get real healing statistics
-   */
-  async getRealHealingStatistics() {
-    let totalTests = 0;
-    let totalFailures = 0;
-    let totalHealings = 0;
-    let aiHealings = 0;
-    let traditionalHealings = 0;
-    const recentFailures = [];
-    for (const execution of this.activeExecutions.values()) {
-      totalTests++;
-      if (execution.failures) {
-        totalFailures += execution.failures.length;
-        for (const failure of execution.failures) {
-          if (failure.healed) {
-            totalHealings++;
-            if (failure.healedLocator && failure.healedLocator.includes("data-testid")) {
-              aiHealings++;
-            } else {
-              traditionalHealings++;
-            }
-          } else {
-            if (Date.now() - failure.timestamp.getTime() < 24 * 60 * 60 * 1e3) {
-              recentFailures.push(failure);
-            }
-          }
-        }
-      }
-    }
-    const aiStats = await aiSelfHealingService.getHealingStatistics();
-    const traditionalStats = await selfHealingService.getStatistics();
-    return {
-      totalTests,
-      totalFailures,
-      totalHealings,
-      successRate: totalFailures > 0 ? totalHealings / totalFailures : 0,
-      aiHealings: aiHealings + aiStats.totalHealings,
-      traditionalHealings: traditionalHealings + traditionalStats.total,
-      recentFailures: recentFailures.slice(0, 10)
-      // Last 10 failures
-    };
-  }
-  /**
-   * Get real healing history
-   */
-  async getRealHealingHistory() {
-    var _a, _b;
-    const history = [];
-    for (const execution of this.activeExecutions.values()) {
-      if (execution.failures) {
-        for (const failure of execution.failures) {
-          history.push({
-            id: `healing-${failure.id}`,
-            testId: execution.id,
-            scriptId: execution.scriptId,
-            originalLocator: failure.locator,
-            healedLocator: failure.healedLocator,
-            success: failure.healed || false,
-            timestamp: failure.timestamp,
-            failureReason: failure.error,
-            elementType: ((_a = failure.element) == null ? void 0 : _a.tagName.toLowerCase()) || "unknown",
-            aiEnhanced: ((_b = failure.healedLocator) == null ? void 0 : _b.includes("data-testid")) || false
-          });
-        }
-      }
-    }
-    return history.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }
-  /**
-   * Simulate test execution with failures for demonstration
-   */
-  async simulateTestExecution(scriptId, withFailures = true) {
-    var _a;
-    const testId = `test-${Date.now()}`;
-    const execution = {
-      id: testId,
-      scriptId,
-      status: "running",
-      startTime: /* @__PURE__ */ new Date(),
-      logs: ["Test started"],
-      failures: []
-    };
-    this.activeExecutions.set(testId, execution);
-    this.emitEvent("testExecutionStarted", { testExecution: execution });
-    await new Promise((resolve) => setTimeout(resolve, 1e3));
-    if (withFailures) {
-      const failure = {
-        id: `failure-${Date.now()}`,
-        step: 1,
-        locator: "#dynamic-element-12345",
-        error: "Element not found",
-        timestamp: /* @__PURE__ */ new Date()
-      };
-      (_a = execution.failures) == null ? void 0 : _a.push(failure);
-      execution.logs.push(`Step 1 failed: ${failure.error}`);
-      this.emitEvent("locatorFailed", {
-        testId,
-        step: failure.step,
-        locator: failure.locator,
-        error: failure.error
-      });
-      await new Promise((resolve) => setTimeout(resolve, 1e3));
-    }
-    execution.status = "passed";
-    execution.endTime = /* @__PURE__ */ new Date();
-    execution.logs.push("Test completed");
-    this.emitEvent("testExecutionCompleted", { testExecution: execution });
-  }
-  /**
-   * Emit custom event
-   */
-  emitEvent(eventName, detail) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(eventName, { detail }));
-    }
-  }
-  /**
-   * Clear old test executions
-   */
-  clearOldExecutions(olderThanDays = 7) {
-    const cutoffDate = /* @__PURE__ */ new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
-    for (const [id, execution] of this.activeExecutions.entries()) {
-      if (execution.startTime < cutoffDate) {
-        this.activeExecutions.delete(id);
-      }
-    }
-  }
-}
-const realDataIntegration = new RealDataIntegration();
-const SelfHealingManager = ({ onSuggestionApproved, onClose }) => {
-  const [suggestions, setSuggestions] = reactExports.useState([]);
-  const [loading, setLoading] = reactExports.useState(false);
-  const [statistics, setStatistics] = reactExports.useState(null);
-  reactExports.useEffect(() => {
-    loadSuggestions();
-    realDataIntegration.startListening();
-    setTimeout(() => {
-      realDataIntegration.simulateTestExecution("demo-script-1", true);
-    }, 2e3);
-    return () => {
-      realDataIntegration.stopListening();
-    };
-  }, []);
-  const loadSuggestions = async () => {
-    setLoading(true);
-    try {
-      const realStats = await realDataIntegration.getRealHealingStatistics();
-      const traditionalStats = await selfHealingService.getStatistics();
-      const healingSuggestions = await selfHealingService.getSuggestions();
-      const combinedStats = {
-        total: realStats.totalTests + traditionalStats.total,
-        pending: healingSuggestions.filter((s) => s.status === "pending").length,
-        approved: healingSuggestions.filter((s) => s.status === "approved").length,
-        rejected: healingSuggestions.filter((s) => s.status === "rejected").length,
-        averageConfidence: traditionalStats.averageConfidence,
-        aiEnhancedCount: realStats.aiHealings,
-        aiSuccessRate: realStats.successRate,
-        visualSimilarityAvg: traditionalStats.visualSimilarityAvg
-      };
-      setSuggestions(healingSuggestions);
-      setStatistics(combinedStats);
-    } catch (error) {
-      console.error("Error loading suggestions:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handleApprove = async (id) => {
-    try {
-      setLoading(true);
-      const success = await selfHealingService.approveSuggestion(id);
-      if (success) {
-        setSuggestions(
-          (prev) => prev.map((s) => s.id === id ? { ...s, status: "approved" } : s)
-        );
-        const suggestion = suggestions.find((s) => s.id === id);
-        if (suggestion && onSuggestionApproved) {
-          onSuggestionApproved(suggestion);
-        }
-      }
-    } catch (error) {
-      console.error("Error approving suggestion:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handleReject = async (id) => {
-    try {
-      setLoading(true);
-      const success = await selfHealingService.rejectSuggestion(id);
-      if (success) {
-        setSuggestions(
-          (prev) => prev.map((s) => s.id === id ? { ...s, status: "rejected" } : s)
-        );
-      }
-    } catch (error) {
-      console.error("Error rejecting suggestion:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const pendingSuggestions = suggestions.filter((s) => s.status === "pending");
-  const approvedSuggestions = suggestions.filter((s) => s.status === "approved");
-  const rejectedSuggestions = suggestions.filter((s) => s.status === "rejected");
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "self-healing-manager", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "healing-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Self-Healing Suggestions" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "8px" }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: loadSuggestions, disabled: loading, children: loading ? "Refreshing..." : "Refresh" }),
-        onClose && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, children: "Close" })
-      ] })
-    ] }),
-    pendingSuggestions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestions-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-        "Pending (",
-        pendingSuggestions.length,
-        ")"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "suggestions-list", children: pendingSuggestions.map((suggestion) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-item pending", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-content", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locator-pair", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "broken-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Broken:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.brokenLocator })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "valid-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Valid:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.validLocator })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "confidence", children: [
-            "Confidence: ",
-            Math.round(suggestion.confidence * 100),
-            "%"
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-actions", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              onClick: () => handleApprove(suggestion.id),
-              disabled: loading,
-              className: "approve-btn",
-              children: "Approve"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              onClick: () => handleReject(suggestion.id),
-              disabled: loading,
-              className: "reject-btn",
-              children: "Reject"
-            }
-          )
-        ] })
-      ] }, suggestion.id)) })
-    ] }),
-    approvedSuggestions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestions-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-        "Approved (",
-        approvedSuggestions.length,
-        ")"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "suggestions-list", children: approvedSuggestions.map((suggestion) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-item approved", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-content", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locator-pair", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "broken-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Broken:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.brokenLocator })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "valid-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Valid:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.validLocator })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "confidence", children: [
-            "Confidence: ",
-            Math.round(suggestion.confidence * 100),
-            "%"
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-badge approved", children: "Approved" })
-      ] }, suggestion.id)) })
-    ] }),
-    rejectedSuggestions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestions-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-        "Rejected (",
-        rejectedSuggestions.length,
-        ")"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "suggestions-list", children: rejectedSuggestions.map((suggestion) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-item rejected", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "suggestion-content", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locator-pair", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "broken-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Broken:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.brokenLocator })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "valid-locator", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Valid:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: suggestion.validLocator })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "confidence", children: [
-            "Confidence: ",
-            Math.round(suggestion.confidence * 100),
-            "%"
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-badge rejected", children: "Rejected" })
-      ] }, suggestion.id)) })
-    ] }),
-    suggestions.length === 0 && !loading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No self-healing suggestions found." })
-  ] });
-};
-const SelfHealingUI = ({ onClose }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(SelfHealingManager, { onClose });
-};
-const AISelfHealingUI = ({ onClose }) => {
-  const [activeTab, setActiveTab] = reactExports.useState("dashboard");
-  const [statistics, setStatistics] = reactExports.useState(null);
-  const [history, setHistory] = reactExports.useState([]);
-  const [config, setConfig] = reactExports.useState(null);
-  const [isLoading, setIsLoading] = reactExports.useState(true);
-  const [selectedRecord, setSelectedRecord] = reactExports.useState(null);
-  const [showDetails, setShowDetails] = reactExports.useState(false);
-  const [trainingData, setTrainingData] = reactExports.useState([]);
-  const [isTraining, setIsTraining] = reactExports.useState(false);
-  reactExports.useEffect(() => {
-    loadData();
-    realDataIntegration.startListening();
-    setTimeout(() => {
-      realDataIntegration.simulateTestExecution("demo-script-1", true);
-    }, 2e3);
-    setTimeout(() => {
-      realDataIntegration.simulateTestExecution("demo-script-2", true);
-    }, 5e3);
-    return () => {
-      realDataIntegration.stopListening();
-    };
-  }, []);
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const realStats = await realDataIntegration.getRealHealingStatistics();
-      const aiStats = await aiSelfHealingService.getHealingStatistics();
-      const realHistory = await realDataIntegration.getRealHealingHistory();
-      const currentConfig = await aiSelfHealingService.getConfig();
-      const combinedStats = {
-        totalHealings: realStats.totalHealings + aiStats.totalHealings,
-        successRate: realStats.successRate || aiStats.successRate,
-        autoHealRate: aiStats.autoHealRate,
-        rollbackRate: aiStats.rollbackRate,
-        averageConfidence: aiStats.averageConfidence,
-        topStrategies: aiStats.topStrategies
-      };
-      setStatistics(combinedStats);
-      setHistory(await loadHealingHistory());
-      setConfig(currentConfig);
-    } catch (error) {
-      console.error("Failed to load AI self-healing data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  const loadHealingHistory = async () => {
-    try {
-      const realHistory = await realDataIntegration.getRealHealingHistory();
-      return realHistory.map((record) => ({
-        id: record.id,
-        originalLocator: record.originalLocator,
-        healedLocator: record.healedLocator || "",
-        success: record.success,
-        confidence: 0.8,
-        // Default confidence
-        timestamp: record.timestamp,
-        context: {
-          url: `test-${record.scriptId}`,
-          elementType: record.elementType,
-          failureReason: record.failureReason
-        }
-      }));
-    } catch (error) {
-      console.error("Failed to load healing history:", error);
-      return [];
-    }
-  };
-  const handleConfigUpdate = async (newConfig) => {
-    try {
-      aiSelfHealingService.updateConfig(newConfig);
-      setConfig({ ...config, ...newConfig });
-    } catch (error) {
-      console.error("Failed to update config:", error);
-    }
-  };
-  const handleTrainModel = async () => {
-    setIsTraining(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2e3));
-      await loadData();
-    } catch (error) {
-      console.error("Failed to train model:", error);
-    } finally {
-      setIsTraining(false);
-    }
-  };
-  if (isLoading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "20px", textAlign: "center" }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "spinner" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading AI Self-Healing..." })
-    ] });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-    background: "var(--vscode-sideBar-background)",
-    color: "var(--vscode-sideBar-foreground)"
-  }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      padding: "15px",
-      borderBottom: "1px solid var(--vscode-panel-border)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "18px" }, children: "🤖" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { style: { margin: 0, fontSize: "14px", fontWeight: "600" }, children: "AI Self-Healing" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          onClick: onClose,
-          style: {
-            background: "none",
-            border: "none",
-            fontSize: "20px",
-            cursor: "pointer",
-            color: "var(--vscode-sideBar-foreground)",
-            padding: "0",
-            width: "24px",
-            height: "24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          },
-          children: "×"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      display: "flex",
-      borderBottom: "1px solid var(--vscode-panel-border)",
-      background: "var(--vscode-editor-background)"
-    }, children: [
-      { id: "dashboard", label: "Dashboard", icon: "📊" },
-      { id: "history", label: "History", icon: "📜" },
-      { id: "config", label: "Config", icon: "⚙️" },
-      { id: "training", label: "Training", icon: "🧠" }
-    ].map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        onClick: () => setActiveTab(tab.id),
-        style: {
-          flex: 1,
-          padding: "10px",
-          border: "none",
-          background: activeTab === tab.id ? "var(--vscode-tab-activeBackground)" : "transparent",
-          color: activeTab === tab.id ? "var(--vscode-tab-activeForeground)" : "var(--vscode-tab-inactiveForeground)",
-          cursor: "pointer",
-          fontSize: "12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "5px"
-        },
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tab.icon }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tab.label })
-        ]
-      },
-      tab.id
-    )) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflow: "auto", padding: "15px" }, children: [
-      activeTab === "dashboard" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        DashboardTab,
-        {
-          statistics,
-          onRefresh: loadData
-        }
-      ),
-      activeTab === "history" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        HistoryTab,
-        {
-          history,
-          selectedRecord,
-          onSelectRecord: setSelectedRecord,
-          showDetails,
-          onToggleDetails: () => setShowDetails(!showDetails)
-        }
-      ),
-      activeTab === "config" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigTab,
-        {
-          config,
-          onUpdate: handleConfigUpdate
-        }
-      ),
-      activeTab === "training" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        TrainingTab,
-        {
-          trainingData,
-          isTraining,
-          onTrain: handleTrainModel
-        }
-      )
-    ] })
-  ] });
-};
-const DashboardTab = ({ statistics, onRefresh }) => {
-  if (!statistics) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "No statistics available" });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { style: { margin: 0, fontSize: "14px" }, children: "Performance Overview" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          onClick: onRefresh,
-          style: {
-            padding: "5px 10px",
-            border: "1px solid var(--vscode-button-border)",
-            background: "var(--vscode-button-background)",
-            color: "var(--vscode-button-foreground)",
-            cursor: "pointer",
-            fontSize: "11px",
-            borderRadius: "3px"
-          },
-          children: "Refresh"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: "15px",
-      marginBottom: "20px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        MetricCard,
-        {
-          label: "Total Healings",
-          value: statistics.totalHealings.toString(),
-          icon: "🔧"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        MetricCard,
-        {
-          label: "Success Rate",
-          value: `${(statistics.successRate * 100).toFixed(1)}%`,
-          icon: "✅",
-          color: statistics.successRate >= 0.8 ? "#28a745" : "#ffc107"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        MetricCard,
-        {
-          label: "Auto-Heal Rate",
-          value: `${(statistics.autoHealRate * 100).toFixed(1)}%`,
-          icon: "🤖",
-          color: statistics.autoHealRate >= 0.7 ? "#28a745" : "#ffc107"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        MetricCard,
-        {
-          label: "Avg Confidence",
-          value: `${(statistics.averageConfidence * 100).toFixed(1)}%`,
-          icon: "📊",
-          color: statistics.averageConfidence >= 0.8 ? "#28a745" : "#ffc107"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h5", { style: { margin: "0 0 10px 0", fontSize: "13px" }, children: "Top Healing Strategies" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-        background: "var(--vscode-editor-background)",
-        border: "1px solid var(--vscode-panel-border)",
-        borderRadius: "4px",
-        padding: "10px"
-      }, children: statistics.topStrategies.map((strategy, index) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          style: {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "8px 0",
-            borderBottom: index < statistics.topStrategies.length - 1 ? "1px solid var(--vscode-panel-border)" : "none"
-          },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
-                background: "var(--vscode-badge-background)",
-                color: "var(--vscode-badge-foreground)",
-                padding: "2px 6px",
-                borderRadius: "3px",
-                fontSize: "10px",
-                fontWeight: "bold"
-              }, children: [
-                "#",
-                index + 1
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "12px", textTransform: "capitalize" }, children: strategy.strategy })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" }, children: [
-                strategy.count,
-                " uses"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
-                fontSize: "11px",
-                color: strategy.successRate >= 0.8 ? "#28a745" : "#ffc107",
-                fontWeight: "bold"
-              }, children: [
-                (strategy.successRate * 100).toFixed(1),
-                "%"
-              ] })
-            ] })
-          ]
-        },
-        strategy.strategy
-      )) })
-    ] })
-  ] });
-};
-const HistoryTab = ({ history, selectedRecord, onSelectRecord, showDetails, onToggleDetails }) => {
-  const formatDate = (date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(date);
-  };
-  const getStatusIcon = (record) => {
-    if (record.success === null) return "⏳";
-    if (record.success) return "✅";
-    if (record.rollback) return "🔄";
-    return "❌";
-  };
-  const getConfidenceColor = (confidence) => {
-    if (confidence >= 0.8) return "#28a745";
-    if (confidence >= 0.6) return "#ffc107";
-    return "#dc3545";
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "15px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { style: { margin: 0, fontSize: "14px" }, children: "Healing History" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          onClick: onToggleDetails,
-          style: {
-            padding: "5px 10px",
-            border: "1px solid var(--vscode-button-border)",
-            background: showDetails ? "var(--vscode-button-secondaryBackground)" : "var(--vscode-button-background)",
-            color: "var(--vscode-button-foreground)",
-            cursor: "pointer",
-            fontSize: "11px",
-            borderRadius: "3px"
-          },
-          children: [
-            showDetails ? "Hide" : "Show",
-            " Details"
-          ]
-        }
-      )
-    ] }),
-    history.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      textAlign: "center",
-      padding: "40px 20px",
-      color: "var(--vscode-descriptionForeground)"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "24px", marginBottom: "10px" }, children: "📭" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: 0, fontSize: "12px" }, children: "No healing history yet" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: "5px 0 0 0", fontSize: "11px" }, children: "Healing attempts will appear here" })
-    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      background: "var(--vscode-editor-background)",
-      border: "1px solid var(--vscode-panel-border)",
-      borderRadius: "4px",
-      maxHeight: "400px",
-      overflow: "auto"
-    }, children: history.map((record) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        onClick: () => onSelectRecord(record),
-        style: {
-          padding: "12px",
-          borderBottom: "1px solid var(--vscode-panel-border)",
-          cursor: "pointer",
-          background: (selectedRecord == null ? void 0 : selectedRecord.id) === record.id ? "var(--vscode-list-activeSelectionBackground)" : "transparent",
-          transition: "background 0.2s"
-        },
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: "8px"
-          }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "16px" }, children: getStatusIcon(record) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "12px", fontWeight: "500" }, children: record.context.elementType }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-                  fontSize: "10px",
-                  color: "var(--vscode-descriptionForeground)",
-                  marginTop: "2px"
-                }, children: formatDate(record.timestamp) })
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-              fontSize: "11px",
-              color: getConfidenceColor(record.confidence),
-              fontWeight: "bold",
-              textAlign: "right"
-            }, children: [
-              (record.confidence * 100).toFixed(0),
-              "%"
-            ] })
-          ] }),
-          showDetails && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-            fontSize: "10px",
-            color: "var(--vscode-descriptionForeground)",
-            marginTop: "8px",
-            paddingTop: "8px",
-            borderTop: "1px solid var(--vscode-panel-border)"
-          }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "4px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Original:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { style: {
-                background: "var(--vscode-textBlockQuote-background)",
-                padding: "2px 4px",
-                borderRadius: "2px",
-                fontSize: "9px",
-                marginLeft: "4px",
-                wordBreak: "break-all"
-              }, children: record.originalLocator })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "4px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Healed:" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { style: {
-                background: "var(--vscode-textBlockQuote-background)",
-                padding: "2px 4px",
-                borderRadius: "2px",
-                fontSize: "9px",
-                marginLeft: "4px",
-                wordBreak: "break-all"
-              }, children: record.healedLocator })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "4px" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Reason:" }),
-              " ",
-              record.context.failureReason
-            ] }),
-            record.rollback && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { color: "#dc3545" }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Rolled back:" }),
-              " ",
-              record.rollback.reason,
-              "(",
-              formatDate(record.rollback.timestamp),
-              ")"
-            ] })
-          ] })
-        ]
-      },
-      record.id
-    )) })
-  ] });
-};
-const ConfigTab = ({ config, onUpdate }) => {
-  if (!config) return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Loading configuration..." });
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { style: { margin: "0 0 15px 0", fontSize: "14px" }, children: "AI Configuration" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "15px" }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigToggle,
-        {
-          label: "Enable AI Self-Healing",
-          description: "Allow AI to automatically heal failed locators",
-          enabled: config.enabled,
-          onToggle: (enabled) => onUpdate({ enabled })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigSlider,
-        {
-          label: "Confidence Threshold",
-          description: "Minimum confidence required for auto-healing",
-          value: config.confidenceThreshold,
-          min: 0.5,
-          max: 1,
-          step: 0.05,
-          onChange: (confidenceThreshold) => onUpdate({ confidenceThreshold }),
-          formatValue: (v) => `${(v * 100).toFixed(0)}%`
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigSlider,
-        {
-          label: "Max Retries",
-          description: "Maximum number of healing attempts",
-          value: config.maxRetries,
-          min: 1,
-          max: 5,
-          step: 1,
-          onChange: (maxRetries) => onUpdate({ maxRetries })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigSlider,
-        {
-          label: "Rollback After Failures",
-          description: "Auto-rollback after N consecutive failures",
-          value: config.rollbackAfterFailures,
-          min: 2,
-          max: 10,
-          step: 1,
-          onChange: (rollbackAfterFailures) => onUpdate({ rollbackAfterFailures })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigToggle,
-        {
-          label: "Require User Approval",
-          description: "Always ask for user approval before applying healing",
-          enabled: config.requireUserApproval,
-          onToggle: (requireUserApproval) => onUpdate({ requireUserApproval })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ConfigToggle,
-        {
-          label: "Auto-approve High Confidence",
-          description: "Automatically apply healing when confidence is very high",
-          enabled: config.autoApproveHighConfidence,
-          onToggle: (autoApproveHighConfidence) => onUpdate({ autoApproveHighConfidence }),
-          disabled: config.requireUserApproval
-        }
-      )
-    ] })
-  ] });
-};
-const TrainingTab = ({ trainingData, isTraining, onTrain }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { style: { margin: "0 0 15px 0", fontSize: "14px" }, children: "ML Model Training" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      background: "var(--vscode-editor-background)",
-      border: "1px solid var(--vscode-panel-border)",
-      borderRadius: "4px",
-      padding: "15px",
-      marginBottom: "15px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h5", { style: { margin: "0 0 10px 0", fontSize: "12px" }, children: "Model Information" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "5px" }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Model Type:" }),
-          " Simple Neural Network"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "5px" }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Features:" }),
-          " 24 locator characteristics"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: "5px" }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Training Samples:" }),
-          " ",
-          trainingData.length
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Last Trained:" }),
-          " Never"
-        ] })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      background: "var(--vscode-textBlockQuote-background)",
-      border: "1px solid var(--vscode-textBlockQuote-border)",
-      borderRadius: "4px",
-      padding: "15px",
-      marginBottom: "15px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h5", { style: { margin: "0 0 10px 0", fontSize: "12px" }, children: "How It Works" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "11px", lineHeight: "1.4" }, children: "The AI model learns from past healing attempts to predict which locators are most likely to succeed. It considers factors like:" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { style: {
-        margin: "10px 0 0 0",
-        paddingLeft: "20px",
-        fontSize: "11px",
-        lineHeight: "1.4"
-      }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "Element type and attributes" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "Text content and structure" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "Position in DOM hierarchy" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "Visual properties" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "Historical success patterns" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        onClick: onTrain,
-        disabled: isTraining || trainingData.length < 10,
-        style: {
-          width: "100%",
-          padding: "12px",
-          border: "none",
-          borderRadius: "4px",
-          background: isTraining || trainingData.length < 10 ? "var(--vscode-button-secondaryBackground)" : "var(--vscode-button-background)",
-          color: "var(--vscode-button-foreground)",
-          cursor: isTraining || trainingData.length < 10 ? "not-allowed" : "pointer",
-          fontSize: "12px",
-          fontWeight: "500",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "8px"
-        },
-        children: isTraining ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "spinner", style: { width: "12px", height: "12px" } }),
-          "Training Model..."
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: "🧠 Train Model" })
-      }
-    ),
-    trainingData.length < 10 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      fontSize: "10px",
-      color: "var(--vscode-descriptionForeground)",
-      textAlign: "center",
-      marginTop: "8px"
-    }, children: "Need at least 10 healing attempts to train the model" })
-  ] });
-};
-const MetricCard = ({ label, value, icon, color }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-    background: "var(--vscode-editor-background)",
-    border: "1px solid var(--vscode-panel-border)",
-    borderRadius: "4px",
-    padding: "12px",
-    textAlign: "center"
-  }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "20px", marginBottom: "5px" }, children: icon }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      fontSize: "16px",
-      fontWeight: "bold",
-      color: color || "var(--vscode-foreground)",
-      marginBottom: "5px"
-    }, children: value }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      fontSize: "10px",
-      color: "var(--vscode-descriptionForeground)"
-    }, children: label })
-  ] });
-};
-const ConfigToggle = ({ label, description, enabled, onToggle, disabled }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "5px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: {
-        fontSize: "12px",
-        fontWeight: "500",
-        color: disabled ? "var(--vscode-disabledForeground)" : "var(--vscode-foreground)"
-      }, children: label }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          onClick: () => onToggle(!enabled),
-          disabled,
-          style: {
-            width: "40px",
-            height: "20px",
-            borderRadius: "10px",
-            border: "none",
-            background: enabled ? "var(--vscode-button-background)" : "var(--vscode-button-secondaryBackground)",
-            position: "relative",
-            cursor: disabled ? "not-allowed" : "pointer",
-            transition: "background 0.2s"
-          },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-            position: "absolute",
-            top: "2px",
-            left: enabled ? "20px" : "2px",
-            width: "16px",
-            height: "16px",
-            borderRadius: "50%",
-            background: "var(--vscode-button-foreground)",
-            transition: "left 0.2s"
-          } })
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      fontSize: "10px",
-      color: "var(--vscode-descriptionForeground)",
-      paddingLeft: "0"
-    }, children: description })
-  ] });
-};
-const ConfigSlider = ({ label, description, value, min, max, step, onChange, formatValue }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "5px"
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { fontSize: "12px", fontWeight: "500" }, children: label }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
-        fontSize: "11px",
-        color: "var(--vscode-foreground)",
-        fontWeight: "bold"
-      }, children: formatValue ? formatValue(value) : value })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "input",
-      {
-        type: "range",
-        min,
-        max,
-        step,
-        value,
-        onChange: (e) => onChange(parseFloat(e.target.value)),
-        style: {
-          width: "100%",
-          marginBottom: "5px"
-        }
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      fontSize: "10px",
-      color: "var(--vscode-descriptionForeground)"
-    }, children: description })
-  ] });
-};
-class DDTService {
-  constructor() {
-    __publicField(this, "dataFiles", /* @__PURE__ */ new Map());
-    __publicField(this, "dataRows", /* @__PURE__ */ new Map());
-  }
-  /**
-   * Parse a CSV string
-   */
-  parseCSV(text) {
-    const lines = text.split("\n").filter((line) => line.trim() !== "");
-    if (lines.length === 0) {
-      return { data: [], columns: [] };
-    }
-    const headers = lines[0].split(",").map((header) => header.trim().replace(/^"(.*)"$/, "$1"));
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(",").map((value) => value.trim().replace(/^"(.*)"$/, "$1"));
-      const row = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] || "";
-      });
-      data.push(row);
-    }
-    return { data, columns: headers };
-  }
-  /**
-   * Parse a JSON string
-   */
-  parseJSON(text) {
-    try {
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) {
-        throw new Error("JSON must be an array of objects");
-      }
-      if (data.length === 0) {
-        return { data: [], columns: [] };
-      }
-      const columns = Object.keys(data[0]);
-      return { data, columns };
-    } catch (error) {
-      throw new Error(`JSON parsing error: ${error.message}`);
-    }
-  }
-  /**
-   * Upload and parse a CSV file
-   */
-  async uploadCSV(fileName, fileContent) {
-    try {
-      const { data: rows, columns } = this.parseCSV(fileContent);
-      const fileId = Math.random().toString(36).substr(2, 9);
-      const testDataFile = {
-        id: fileId,
-        name: fileName.replace(/\.csv$/i, ""),
-        fileName,
-        fileType: "csv",
-        fileSize: fileContent.length,
-        createdAt: /* @__PURE__ */ new Date(),
-        rowCount: rows.length,
-        columnNames: columns
-      };
-      this.dataFiles.set(fileId, testDataFile);
-      const rowsToCreate = rows.map((row, index) => ({
-        rowNumber: index + 1,
-        data: row
-      }));
-      this.dataRows.set(fileId, rowsToCreate);
-      await chrome.storage.local.set({
-        [`ddt_file_${fileId}`]: testDataFile,
-        [`ddt_rows_${fileId}`]: rowsToCreate
-      });
-      return testDataFile;
-    } catch (error) {
-      console.error("Error uploading CSV:", error);
-      throw error;
-    }
-  }
-  /**
-   * Upload and parse a JSON file
-   */
-  async uploadJSON(fileName, fileContent) {
-    try {
-      const { data: rows, columns } = this.parseJSON(fileContent);
-      const fileId = Math.random().toString(36).substr(2, 9);
-      const testDataFile = {
-        id: fileId,
-        name: fileName.replace(/\.json$/i, ""),
-        fileName,
-        fileType: "json",
-        fileSize: fileContent.length,
-        createdAt: /* @__PURE__ */ new Date(),
-        rowCount: rows.length,
-        columnNames: columns
-      };
-      this.dataFiles.set(fileId, testDataFile);
-      const rowsToCreate = rows.map((row, index) => ({
-        rowNumber: index + 1,
-        data: row
-      }));
-      this.dataRows.set(fileId, rowsToCreate);
-      await chrome.storage.local.set({
-        [`ddt_file_${fileId}`]: testDataFile,
-        [`ddt_rows_${fileId}`]: rowsToCreate
-      });
-      return testDataFile;
-    } catch (error) {
-      console.error("Error uploading JSON:", error);
-      throw error;
-    }
-  }
-  /**
-   * Get all data files
-   */
-  async getDataFiles() {
-    try {
-      const storageData = await chrome.storage.local.get(null);
-      const keys = Object.keys(storageData).filter((key) => key.startsWith("ddt_file_"));
-      const files = [];
-      for (const key of keys) {
-        const result = await chrome.storage.local.get([key]);
-        if (result[key]) {
-          files.push(result[key]);
-        }
-      }
-      return files;
-    } catch (error) {
-      console.error("Error getting data files:", error);
-      return Array.from(this.dataFiles.values());
-    }
-  }
-  /**
-   * Get a specific data file with its rows
-   */
-  async getDataFile(fileId) {
-    try {
-      const fileResult = await chrome.storage.local.get([`ddt_file_${fileId}`]);
-      const rowsResult = await chrome.storage.local.get([`ddt_rows_${fileId}`]);
-      const file = fileResult[`ddt_file_${fileId}`];
-      const rows = rowsResult[`ddt_rows_${fileId}`];
-      if (file && rows) {
-        return { file, rows };
-      }
-      const inMemoryFile = this.dataFiles.get(fileId);
-      const inMemoryRows = this.dataRows.get(fileId);
-      if (inMemoryFile && inMemoryRows) {
-        return { file: inMemoryFile, rows: inMemoryRows };
-      }
-      return null;
-    } catch (error) {
-      console.error("Error getting data file:", error);
-      return null;
-    }
-  }
-  /**
-   * Delete a data file
-   */
-  async deleteDataFile(fileId) {
-    try {
-      await chrome.storage.local.remove([`ddt_file_${fileId}`, `ddt_rows_${fileId}`]);
-      this.dataFiles.delete(fileId);
-      this.dataRows.delete(fileId);
-      return true;
-    } catch (error) {
-      console.error("Error deleting data file:", error);
-      return false;
-    }
-  }
-  /**
-   * Bind variables to test data
-   * Used during test execution to replace ${variable} with actual data
-   */
-  substituteVariables(template, data) {
-    let result = template;
-    Object.keys(data).forEach((key) => {
-      const regex = new RegExp(`\\$\\{${key}\\}`, "g");
-      result = result.replace(regex, String(data[key] || ""));
-    });
-    return result;
-  }
-  /**
-   * Execute test with data-driven approach
-   * Returns all rows for iteration
-   */
-  async prepareDataDrivenExecution(fileId) {
-    try {
-      const result = await this.getDataFile(fileId);
-      if (!result) {
-        throw new Error("Data file not found");
-      }
-      const { file, rows } = result;
-      return {
-        fileInfo: file,
-        iterations: rows.map((r) => ({
-          iteration: r.rowNumber,
-          variables: r.data
-        }))
-      };
-    } catch (error) {
-      console.error("Error preparing DDT execution:", error);
-      throw error;
-    }
-  }
-}
-const ddtService = new DDTService();
-const DDTManager = ({ onFileSelected }) => {
-  const [files, setFiles] = reactExports.useState([]);
-  const [loading, setLoading] = reactExports.useState(false);
-  const [selectedFile, setSelectedFile] = reactExports.useState("");
-  const fileInputRef = reactExports.useRef(null);
-  reactExports.useEffect(() => {
-    loadFiles();
-  }, []);
-  const loadFiles = async () => {
-    setLoading(true);
-    try {
-      const dataFiles = await ddtService.getDataFiles();
-      setFiles(dataFiles);
-    } catch (error) {
-      console.error("Error loading files:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handleFileUpload = async (event) => {
-    var _a;
-    const file = (_a = event.target.files) == null ? void 0 : _a[0];
-    if (!file) return;
-    try {
-      setLoading(true);
-      const content = await file.text();
-      let testDataFile;
-      if (file.name.endsWith(".csv")) {
-        testDataFile = await ddtService.uploadCSV(file.name, content);
-      } else if (file.name.endsWith(".json")) {
-        testDataFile = await ddtService.uploadJSON(file.name, content);
-      } else {
-        throw new Error("Unsupported file type. Please upload CSV or JSON files.");
-      }
-      setFiles((prev) => [...prev, testDataFile]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      alert(`Error uploading file: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handleFileDelete = async (fileId) => {
-    if (!confirm("Are you sure you want to delete this file?")) {
-      return;
-    }
-    try {
-      setLoading(true);
-      const success = await ddtService.deleteDataFile(fileId);
-      if (success) {
-        setFiles((prev) => prev.filter((f) => f.id !== fileId));
-        if (selectedFile === fileId) {
-          setSelectedFile("");
-        }
-      }
-    } catch (error) {
-      console.error("Error deleting file:", error);
-      alert(`Error deleting file: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-  const handleFileSelect = (fileId) => {
-    setSelectedFile(fileId);
-    if (onFileSelected) {
-      onFileSelected(fileId);
-    }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ddt-manager", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ddt-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Data Files" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "input",
-        {
-          type: "file",
-          ref: fileInputRef,
-          accept: ".csv,.json",
-          onChange: handleFileUpload,
-          disabled: loading,
-          style: { display: "none" }
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          onClick: () => {
-            var _a;
-            return (_a = fileInputRef.current) == null ? void 0 : _a.click();
-          },
-          disabled: loading,
-          children: loading ? "Uploading..." : "Upload File"
-        }
-      )
-    ] }),
-    files.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No data files uploaded yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ddt-files", children: files.map((file) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: `ddt-file ${selectedFile === file.id ? "selected" : ""}`,
-        onClick: () => handleFileSelect(file.id),
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-info", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-name", children: file.name }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-meta", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-type", children: file.fileType.toUpperCase() }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "row-count", children: [
-                file.rowCount,
-                " rows"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "column-count", children: [
-                file.columnNames.length,
-                " columns"
-              ] })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              className: "delete-btn",
-              onClick: (e) => {
-                e.stopPropagation();
-                handleFileDelete(file.id);
-              },
-              disabled: loading,
-              children: "×"
-            }
-          )
-        ]
-      },
-      file.id
-    )) })
-  ] });
-};
-class DebuggerService {
-  constructor() {
-    __publicField(this, "breakpoints", /* @__PURE__ */ new Map());
-    __publicField(this, "executionContext", null);
-    __publicField(this, "isPaused", false);
-    __publicField(this, "pauseCallback", null);
-  }
-  /**
-   * Add a breakpoint to a file
-   */
-  async addBreakpoint(fileId, line, condition) {
-    const breakpoint = {
-      id: Math.random().toString(36).substr(2, 9),
-      line,
-      enabled: true,
-      condition
-    };
-    const fileBreakpoints = this.breakpoints.get(fileId) || [];
-    fileBreakpoints.push(breakpoint);
-    this.breakpoints.set(fileId, fileBreakpoints);
-    await this.saveBreakpoints(fileId);
-    return breakpoint;
-  }
-  /**
-   * Remove a breakpoint
-   */
-  async removeBreakpoint(fileId, breakpointId) {
-    const fileBreakpoints = this.breakpoints.get(fileId) || [];
-    const updatedBreakpoints = fileBreakpoints.filter((bp) => bp.id !== breakpointId);
-    this.breakpoints.set(fileId, updatedBreakpoints);
-    await this.saveBreakpoints(fileId);
-  }
-  /**
-   * Toggle breakpoint enabled state
-   */
-  async toggleBreakpoint(fileId, breakpointId) {
-    const fileBreakpoints = this.breakpoints.get(fileId) || [];
-    const breakpoint = fileBreakpoints.find((bp) => bp.id === breakpointId);
-    if (breakpoint) {
-      breakpoint.enabled = !breakpoint.enabled;
-      this.breakpoints.set(fileId, fileBreakpoints);
-      await this.saveBreakpoints(fileId);
-    }
-  }
-  /**
-   * Get breakpoints for a file
-   */
-  async getBreakpoints(fileId) {
-    try {
-      const result = await chrome.storage.local.get([`breakpoints_${fileId}`]);
-      if (result[`breakpoints_${fileId}`]) {
-        return result[`breakpoints_${fileId}`];
-      }
-    } catch (error) {
-      console.error("Error loading breakpoints:", error);
-    }
-    return this.breakpoints.get(fileId) || [];
-  }
-  /**
-   * Save breakpoints to storage
-   */
-  async saveBreakpoints(fileId) {
-    try {
-      const fileBreakpoints = this.breakpoints.get(fileId) || [];
-      await chrome.storage.local.set({
-        [`breakpoints_${fileId}`]: fileBreakpoints
-      });
-    } catch (error) {
-      console.error("Error saving breakpoints:", error);
-    }
-  }
-  /**
-   * Check if there's a breakpoint at the specified line
-   */
-  async hasBreakpointAtLine(fileId, line) {
-    const breakpoints = await this.getBreakpoints(fileId);
-    return breakpoints.some((bp) => bp.line === line && bp.enabled);
-  }
-  /**
-   * Pause execution at a breakpoint
-   */
-  async pauseAtBreakpoint(fileId, line) {
-    const variables = [
-      { name: "url", value: "https://example.com", type: "string" },
-      { name: "title", value: "Example Page", type: "string" },
-      { name: "elements", value: "15", type: "number" }
-    ];
-    this.executionContext = {
-      variables,
-      currentLine: line,
-      status: "paused"
-    };
-    this.isPaused = true;
-    if (this.pauseCallback) {
-      this.pauseCallback();
-    }
-    return new Promise((resolve) => {
-      const checkResume = () => {
-        if (!this.isPaused) {
-          resolve();
-        } else {
-          setTimeout(checkResume, 100);
-        }
-      };
-      checkResume();
-    });
-  }
-  /**
-   * Resume execution
-   */
-  resume() {
-    this.isPaused = false;
-    this.executionContext = null;
-  }
-  /**
-   * Step over to next line
-   */
-  stepOver() {
-    this.resume();
-  }
-  /**
-   * Step into function
-   */
-  stepInto() {
-    this.resume();
-  }
-  /**
-   * Step out of function
-   */
-  stepOut() {
-    this.resume();
-  }
-  /**
-   * Get current execution context
-   */
-  getExecutionContext() {
-    return this.executionContext;
-  }
-  /**
-   * Set pause callback
-   */
-  setPauseCallback(callback) {
-    this.pauseCallback = callback;
-  }
-  /**
-   * Evaluate expression in current context
-   */
-  async evaluateExpression(expression) {
-    return `Evaluated: ${expression}`;
-  }
-}
-const debuggerService = new DebuggerService();
-const DebuggerPanel = ({ fileId, currentLine, onLineClick, onClose }) => {
-  const [executionContext, setExecutionContext] = reactExports.useState(null);
-  const [isPaused, setIsPaused] = reactExports.useState(false);
-  const [expression, setExpression] = reactExports.useState("");
-  const [evalResult, setEvalResult] = reactExports.useState("");
-  reactExports.useEffect(() => {
-    debuggerService.setPauseCallback(() => {
-      const context = debuggerService.getExecutionContext();
-      setExecutionContext(context);
-      setIsPaused((context == null ? void 0 : context.status) === "paused");
-    });
-  }, []);
-  const handleResume = () => {
-    debuggerService.resume();
-    setExecutionContext(null);
-    setIsPaused(false);
-  };
-  const handleStepOver = () => {
-    debuggerService.stepOver();
-    setExecutionContext(null);
-    setIsPaused(false);
-  };
-  const handleStepInto = () => {
-    debuggerService.stepInto();
-    setExecutionContext(null);
-    setIsPaused(false);
-  };
-  const handleStepOut = () => {
-    debuggerService.stepOut();
-    setExecutionContext(null);
-    setIsPaused(false);
-  };
-  const handleEvaluate = async () => {
-    if (expression.trim()) {
-      try {
-        const result = await debuggerService.evaluateExpression(expression);
-        setEvalResult(result);
-      } catch (error) {
-        setEvalResult(`Error: ${error.message}`);
-      }
-    }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "debugger-panel", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "debugger-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Debugger" }),
-      isPaused && executionContext && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "current-line", children: [
-        "Paused at line ",
-        executionContext.currentLine
-      ] }),
-      onClose && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, style: { marginLeft: "auto" }, children: "Close" })
-    ] }),
-    isPaused && executionContext ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "debugger-content", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "debugger-controls", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: handleResume, children: "Resume (F8)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: handleStepOver, children: "Step Over (F10)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: handleStepInto, children: "Step Into (F11)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: handleStepOut, children: "Step Out (Shift+F11)" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "variables-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Variables" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "variables-list", children: executionContext.variables.map((variable) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "variable-item", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "variable-name", children: [
-            variable.name,
-            ":"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "variable-value", children: variable.value }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "variable-type", children: [
-            "(",
-            variable.type,
-            ")"
-          ] })
-        ] }, variable.name)) })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "eval-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Evaluate Expression" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "eval-input", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              type: "text",
-              value: expression,
-              onChange: (e) => setExpression(e.target.value),
-              placeholder: "Enter expression to evaluate",
-              onKeyDown: (e) => {
-                if (e.key === "Enter") {
-                  handleEvaluate();
-                }
-              }
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: handleEvaluate, children: "Evaluate" })
-        ] }),
-        evalResult && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "eval-result", children: /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: evalResult }) })
-      ] })
-    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "debugger-info", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Execution is running normally." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Click on line numbers in the editor to add breakpoints." })
-    ] })
-  ] });
-};
-const DebuggerUI = ({ onClose }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(DebuggerPanel, { onClose });
-};
-const API_BASE_URL = "http://localhost:3000/api";
+const API_BASE_URL = "http://localhost:3001/api";
 class ApiService {
   constructor(config) {
     __publicField(this, "config");
@@ -11904,6 +10070,18 @@ class ApiService {
     this.config = {
       baseUrl: (config == null ? void 0 : config.baseUrl) || API_BASE_URL
     };
+    chrome.storage.sync.get(["apiBaseUrl"]).then((result) => {
+      if (result && result.apiBaseUrl) {
+        this.config.baseUrl = result.apiBaseUrl;
+      }
+    }).catch(() => {
+    });
+    chrome.storage.sync.onChanged.addListener((changes) => {
+      if (changes.apiBaseUrl) {
+        const newValue = changes.apiBaseUrl.newValue;
+        this.config.baseUrl = newValue || API_BASE_URL;
+      }
+    });
   }
   /**
    * Set authentication tokens
@@ -12060,6 +10238,13 @@ class ApiService {
     return response.data || [];
   }
   /**
+   * Get projects for current user
+   */
+  async getProjects() {
+    const response = await this.request("/projects");
+    return response.data || [];
+  }
+  /**
    * Get a specific script
    */
   async getScript(id) {
@@ -12069,10 +10254,10 @@ class ApiService {
   /**
    * Create a new script
    */
-  async createScript(name, code, language, description) {
+  async createScript(name, code, language, description, projectId) {
     const response = await this.request("/scripts", {
       method: "POST",
-      body: JSON.stringify({ name, code, language, description })
+      body: JSON.stringify({ name, code, language, description, projectId })
     });
     return response.data;
   }
@@ -12101,6 +10286,16 @@ class ApiService {
     const response = await this.request("/test-runs/start", {
       method: "POST",
       body: JSON.stringify({ scriptId, dataFileId, environment, browser })
+    });
+    return response.data;
+  }
+  /**
+   * Execute current script code directly (without saving to database)
+   */
+  async executeCurrentScript(code, language, environment, browser) {
+    const response = await this.request("/test-runs/execute-current", {
+      method: "POST",
+      body: JSON.stringify({ code, language, environment, browser })
     });
     return response.data;
   }
@@ -12256,12 +10451,12 @@ class TestExecutor {
     }
   }
   /**
-   * Execute a test with data-driven approach
+   * Execute current script code directly (without saving to database)
    */
-  async executeDataDrivenTest(scriptId, dataFileId) {
+  async executeCurrentScript(scriptCode, language) {
     const testRun = {
       id: Math.random().toString(36).substr(2, 9),
-      scriptId,
+      scriptId: "current-script",
       status: "pending",
       startTime: /* @__PURE__ */ new Date(),
       logs: []
@@ -12270,29 +10465,28 @@ class TestExecutor {
     try {
       this.notifyProgress(testRun.id, {
         status: "starting",
-        message: "Starting data-driven test execution..."
+        message: "Starting test execution..."
       });
-      const backendTestRun = await apiService.startTestRun(scriptId, dataFileId);
+      const backendTestRun = await apiService.executeCurrentScript(scriptCode, language);
       testRun.id = backendTestRun.id;
       testRun.status = "running";
       this.activeRuns.set(testRun.id, testRun);
       this.dispatchTestStarted(testRun);
-      this.addLog(testRun.id, `Data-driven test execution started for script: ${scriptId}`);
-      this.addLog(testRun.id, `Using data file: ${dataFileId}`);
+      this.addLog(testRun.id, `Test execution started for current script (${language})`);
       this.notifyProgress(testRun.id, {
         status: "running",
-        message: "Data-driven test is running..."
+        message: "Test is running..."
       });
       this.pollTestRunStatus(testRun.id);
       return testRun;
     } catch (error) {
-      console.error("Error executing data-driven test:", error);
+      console.error("Error executing current script:", error);
       testRun.status = "failed";
       testRun.endTime = /* @__PURE__ */ new Date();
       this.activeRuns.set(testRun.id, testRun);
       this.notifyProgress(testRun.id, {
         status: "failed",
-        error: (error == null ? void 0 : error.message) || "Failed to start data-driven test execution"
+        error: (error == null ? void 0 : error.message) || "Failed to start test execution"
       });
       throw error;
     }
@@ -12307,21 +10501,11 @@ class TestExecutor {
    * Dispatch test started event
    */
   dispatchTestStarted(testRun) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("testExecutionStarted", {
-        detail: { testExecution: testRun }
-      }));
-    }
   }
   /**
    * Dispatch test completed event
    */
   dispatchTestCompleted(testRun) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("testExecutionCompleted", {
-        detail: { testExecution: testRun }
-      }));
-    }
   }
   /**
    * Poll test run status from backend
@@ -12465,17 +10649,6 @@ class TestExecutor {
    * Dispatch locator failure event for self-healing
    */
   dispatchLocatorFailure(testRunId, errorMsg) {
-    if (typeof window === "undefined") return;
-    const locatorMatch = errorMsg.match(/locator[:\s]+['"](.*?)['"]/i) || errorMsg.match(/selector[:\s]+['"](.*?)['"]/i) || errorMsg.match(/element[:\s]+['"](.*?)['"]/i);
-    const locator = locatorMatch ? locatorMatch[1] : "unknown";
-    window.dispatchEvent(new CustomEvent("locatorFailed", {
-      detail: {
-        testId: testRunId,
-        step: 0,
-        locator,
-        error: errorMsg
-      }
-    }));
   }
   /**
    * Get execution history
@@ -12485,10 +10658,8 @@ class TestExecutor {
   }
 }
 const testExecutor = new TestExecutor();
-const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
+const TestExecutorPanel = ({ scriptId, scriptCode, scriptLanguage, onDataDrivenExecution, onClose }) => {
   const [testRuns, setTestRuns] = reactExports.useState([]);
-  const [selectedDataFile, setSelectedDataFile] = reactExports.useState("");
-  const [dataFiles, setDataFiles] = reactExports.useState([]);
   const [isExecuting, setIsExecuting] = reactExports.useState(false);
   const [progress, setProgress] = reactExports.useState(null);
   const [logs, setLogs] = reactExports.useState([]);
@@ -12517,25 +10688,10 @@ const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
     }
   }, []);
   reactExports.useEffect(() => {
-    const loadData = async () => {
-      await loaddataFiles();
-      await loadSavedScripts();
-    };
-    loadData();
-    realDataIntegration.startListening();
-    console.log("✅ Self-healing integration started");
+    loadSavedScripts();
     return () => {
-      realDataIntegration.stopListening();
-      console.log("🛑 Self-healing integration stopped");
     };
   }, [loadSavedScripts]);
-  const loaddataFiles = async () => {
-    try {
-      const files = await ddtService.getDataFiles();
-      setDataFiles(files);
-    } catch (error) {
-    }
-  };
   const handleScriptSelect = async (script) => {
     setSelectedScript(script);
     setShowScriptLibrary(false);
@@ -12568,38 +10724,27 @@ const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
     }
   };
   const handleExecute = async () => {
-    if (isExecuting || !scriptId)
+    if (isExecuting)
       return;
-    setIsExecuting(true);
-    setProgress(null);
-    setLogs([]);
-    try {
-      const testRun = await testExecutor.executeTest(scriptId);
-      setActiveTestRunId(testRun.id);
-      testExecutor.addProgressCallback(testRun.id, (progress2) => {
-        setProgress(progress2);
-      });
-      testExecutor.addLogCallback(testRun.id, (log) => {
-        setLogs((prev) => [...prev, log]);
-      });
-      setTestRuns((prev) => [testRun, ...prev]);
-    } catch (error) {
+    if (!scriptId && !scriptCode) {
       setProgress({
         status: "failed",
-        error: (error == null ? void 0 : error.message) || "Execution failed"
+        error: "No script available to execute"
       });
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-  const handleDataDrivenExecute = async () => {
-    if (isExecuting || !selectedDataFile || !scriptId)
       return;
+    }
     setIsExecuting(true);
     setProgress(null);
     setLogs([]);
     try {
-      const testRun = await testExecutor.executeDataDrivenTest(scriptId, selectedDataFile);
+      let testRun;
+      if (scriptCode && scriptLanguage) {
+        testRun = await testExecutor.executeCurrentScript(scriptCode, scriptLanguage);
+      } else if (scriptId) {
+        testRun = await testExecutor.executeTest(scriptId);
+      } else {
+        throw new Error("No script available to execute");
+      }
       setActiveTestRunId(testRun.id);
       testExecutor.addProgressCallback(testRun.id, (progress2) => {
         setProgress(progress2);
@@ -12608,8 +10753,6 @@ const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
         setLogs((prev) => [...prev, log]);
       });
       setTestRuns((prev) => [testRun, ...prev]);
-      if (onDataDrivenExecution)
-        onDataDrivenExecution(testRun.id);
     } catch (error) {
       setProgress({
         status: "failed",
@@ -12724,40 +10867,12 @@ const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
         "button",
         {
           onClick: handleExecute,
-          disabled: isExecuting || !scriptId,
+          disabled: isExecuting || !scriptId && !scriptCode,
           className: "execute-btn",
           title: "Execute the currently recorded script",
           children: isExecuting ? "Executing..." : "▶️ Execute Current Script"
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "data-driven-controls", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "select",
-          {
-            value: selectedDataFile,
-            onChange: (e) => setSelectedDataFile(e.target.value),
-            disabled: isExecuting,
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select data file for DDT" }),
-              dataFiles.map((file) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: file.id, children: [
-                file.name,
-                " (",
-                file.rowCount,
-                " rows)"
-              ] }, file.id))
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            onClick: handleDataDrivenExecute,
-            disabled: isExecuting || !selectedDataFile,
-            className: "ddt-execute-btn",
-            children: isExecuting ? "Executing..." : "Execute with Data"
-          }
-        )
-      ] }),
       activeTestRunId && /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
@@ -12800,546 +10915,7 @@ const TestExecutorPanel = ({ scriptId, onDataDrivenExecution, onClose }) => {
   ] });
 };
 const TestExecutorUI = ({ onClose, script, scriptName }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(TestExecutorPanel, { scriptId: scriptName || "current", onClose });
-};
-const ApiTestingUI = ({ onClose }) => {
-  const [activeTab, setActiveTab] = reactExports.useState("recorder");
-  const [capturedRequests, setCapturedRequests] = reactExports.useState([]);
-  const [testCases, setTestCases] = reactExports.useState([]);
-  const [selectedRequest, setSelectedRequest] = reactExports.useState(null);
-  const [selectedTestCase, setSelectedTestCase] = reactExports.useState(null);
-  const [isRecording, setIsRecording] = reactExports.useState(false);
-  const [mocks, setMocks] = reactExports.useState([]);
-  const [benchmarks, setBenchmarks] = reactExports.useState([]);
-  const [showNewTest, setShowNewTest] = reactExports.useState(false);
-  const [showNewMock, setShowNewMock] = reactExports.useState(false);
-  const [showNewBenchmark, setShowNewBenchmark] = reactExports.useState(false);
-  reactExports.useEffect(() => {
-    loadData();
-    const interval = setInterval(() => {
-      if (isRecording) {
-        loadData();
-      }
-    }, 1e3);
-    return () => clearInterval(interval);
-  }, [isRecording]);
-  const loadData = () => {
-    setCapturedRequests(apiTestingService.getCapturedRequests());
-    setTestCases(apiTestingService.getTestCases());
-    setMocks(apiTestingService.getMocks());
-    setBenchmarks(apiTestingService.getBenchmarks());
-  };
-  const handleStartRecording = () => {
-    apiTestingService.clearCapturedRequests();
-    setCapturedRequests([]);
-    setIsRecording(true);
-    chrome.runtime.sendMessage({ type: "startApiRecording" }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error("Runtime error:", chrome.runtime.lastError);
-        const errorMsg = chrome.runtime.lastError.message || "";
-        let userMessage = "❌ Failed to start recording: " + errorMsg;
-        if (errorMsg.includes("already attached") || errorMsg.includes("Another debugger")) {
-          userMessage = "❌ Another debugger is already attached\n\nSolutions:\n1. Close Chrome DevTools (F12) on the target tab\n2. Close any other debugging tools\n3. Refresh the page and try again\n4. Restart Chrome if issue persists";
-        } else {
-          userMessage += "\n\nTips:\n- Make sure Playwright is attached to a tab\n- Try refreshing the target page\n- Check browser console for details";
-        }
-        alert(userMessage);
-        setIsRecording(false);
-      } else if (!(response == null ? void 0 : response.success)) {
-        console.error("Recording failed:", response == null ? void 0 : response.error);
-        let userMessage = "❌ Failed to start recording";
-        if (response == null ? void 0 : response.error) {
-          userMessage += ": " + response.error;
-          if (response.error.includes("already attached") || response.error.includes("Another debugger")) {
-            userMessage = "❌ Cannot attach debugger\n\nAnother debugger is already connected to this tab.\n\nPlease:\n✓ Close Chrome DevTools (press F12 to toggle)\n✓ Close any other debugging/inspection tools\n✓ Refresh the page\n✓ Try recording again";
-          }
-        }
-        alert(userMessage);
-        setIsRecording(false);
-      } else {
-        console.log("✅ API Recording started successfully");
-      }
-    });
-  };
-  const handleStopRecording = () => {
-    chrome.runtime.sendMessage({ type: "stopApiRecording" }, () => {
-      setIsRecording(false);
-      loadData();
-    });
-  };
-  const handleCreateTestFromRequest = (requestId) => {
-    const name = prompt("Enter test case name:");
-    if (!name) return;
-    const testCase = apiTestingService.createTestCaseFromRequest(requestId, name);
-    if (testCase) {
-      loadData();
-      setActiveTab("tests");
-      alert("Test case created successfully!");
-    } else {
-      alert("Failed to create test case. Request not found.");
-    }
-  };
-  const handleExecuteTest = async (testId) => {
-    try {
-      await apiTestingService.executeTestCase(testId);
-      loadData();
-      alert("Test executed successfully!");
-    } catch (error) {
-      alert(`Test execution failed: ${(error == null ? void 0 : error.message) || error}`);
-    }
-  };
-  const handleDeleteTest = (testId) => {
-    if (confirm("Are you sure you want to delete this test case?")) {
-      apiTestingService.deleteTestCase(testId);
-      loadData();
-    }
-  };
-  const handleToggleMock = (mockId) => {
-    const mock = mocks.find((m) => m.id === mockId);
-    if (mock) {
-      apiTestingService.updateMock(mockId, { enabled: !mock.enabled });
-      loadData();
-    }
-  };
-  const handleRunBenchmark = async (benchmarkId) => {
-    try {
-      await apiTestingService.runBenchmark(benchmarkId, 10);
-      loadData();
-    } catch (error) {
-      alert(`Benchmark failed: ${error}`);
-    }
-  };
-  const addDemoData = () => {
-    const demoRequest = {
-      id: `demo-req-${Date.now()}`,
-      method: "GET",
-      url: "https://jsonplaceholder.typicode.com/posts/1",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-      timestamp: Date.now()
-    };
-    const demoResponse = {
-      id: `demo-resp-${Date.now()}`,
-      requestId: demoRequest.id,
-      status: 200,
-      statusText: "OK",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        userId: 1,
-        id: 1,
-        title: "Demo Post",
-        body: "This is a demo response"
-      }, null, 2),
-      responseTime: 125,
-      timestamp: Date.now()
-    };
-    apiTestingService.captureRequest(demoRequest);
-    apiTestingService.captureResponse(demoResponse);
-    loadData();
-    alert("Demo data added! Switch to Recorder tab to see it.");
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "api-testing-panel", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "api-testing-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "🔌 API Testing Suite" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "10px", alignItems: "center" }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "demo-button", onClick: addDemoData, title: "Add sample data for testing", children: "+ Demo Data" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "close-button", onClick: onClose, children: "✕" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "api-testing-tabs", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          className: activeTab === "recorder" ? "active" : "",
-          onClick: () => setActiveTab("recorder"),
-          children: "📡 Recorder"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: activeTab === "tests" ? "active" : "",
-          onClick: () => setActiveTab("tests"),
-          children: [
-            "✅ Tests (",
-            testCases.length,
-            ")"
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: activeTab === "mocks" ? "active" : "",
-          onClick: () => setActiveTab("mocks"),
-          children: [
-            "🎭 Mocks (",
-            mocks.length,
-            ")"
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          className: activeTab === "benchmark" ? "active" : "",
-          onClick: () => setActiveTab("benchmark"),
-          children: "⚡ Benchmark"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          className: activeTab === "contracts" ? "active" : "",
-          onClick: () => setActiveTab("contracts"),
-          children: "📋 Contracts"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "api-testing-content", children: [
-      activeTab === "recorder" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        RecorderTab,
-        {
-          isRecording,
-          capturedRequests,
-          selectedRequest,
-          onStartRecording: handleStartRecording,
-          onStopRecording: handleStopRecording,
-          onSelectRequest: setSelectedRequest,
-          onCreateTest: handleCreateTestFromRequest
-        }
-      ),
-      activeTab === "tests" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        TestsTab,
-        {
-          testCases,
-          selectedTestCase,
-          onSelectTestCase: setSelectedTestCase,
-          onExecuteTest: handleExecuteTest,
-          onDeleteTest: handleDeleteTest,
-          onNewTest: () => setShowNewTest(true)
-        }
-      ),
-      activeTab === "mocks" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        MocksTab,
-        {
-          mocks,
-          onToggleMock: handleToggleMock,
-          onNewMock: () => setShowNewMock(true)
-        }
-      ),
-      activeTab === "benchmark" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        BenchmarkTab,
-        {
-          benchmarks,
-          onRunBenchmark: handleRunBenchmark,
-          onNewBenchmark: () => setShowNewBenchmark(true)
-        }
-      ),
-      activeTab === "contracts" && /* @__PURE__ */ jsxRuntimeExports.jsx(ContractsTab, {})
-    ] })
-  ] });
-};
-const RecorderTab = ({ isRecording, capturedRequests, selectedRequest, onStartRecording, onStopRecording, onSelectRequest, onCreateTest }) => {
-  const selected = capturedRequests.find((r) => r.request.id === selectedRequest);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "recorder-tab", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "recorder-controls", children: [
-      !isRecording ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary-button", onClick: onStartRecording, children: "▶️ Start Recording" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "danger-button", onClick: onStopRecording, children: "⏹️ Stop Recording" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "recording-status", children: isRecording ? "🔴 Recording..." : "⚫ Not Recording" }),
-      isRecording && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "recording-hint", style: { fontSize: "11px", opacity: 0.7, marginLeft: "10px" }, children: "💡 Browse your app to capture API calls" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "captured-requests", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { children: [
-        "Captured Requests (",
-        capturedRequests.length,
-        ")"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "request-list", children: [
-        capturedRequests.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty-state", style: { padding: "30px 20px" }, children: isRecording ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "🔍 Listening for API requests..." }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { fontSize: "12px", opacity: 0.7 }, children: "Navigate your app to capture network traffic" })
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "📡 No requests captured yet" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { fontSize: "12px", opacity: 0.7 }, children: 'Click "Start Recording" and browse your app' })
-        ] }) }),
-        capturedRequests.map(({ request, response }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "div",
-          {
-            className: `request-item ${selectedRequest === request.id ? "selected" : ""}`,
-            onClick: () => onSelectRequest(request.id),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "request-method-badge", "data-method": request.method, children: request.method }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "request-url", children: request.url }),
-              response && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status-badge status-${Math.floor(response.status / 100)}xx`, children: response.status }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  className: "create-test-button",
-                  onClick: (e) => {
-                    e.stopPropagation();
-                    onCreateTest(request.id);
-                  },
-                  children: "+ Test"
-                }
-              )
-            ]
-          },
-          request.id
-        ))
-      ] })
-    ] }),
-    selected && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "request-details", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Request Details" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "detail-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Request" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "URL:" }),
-          " ",
-          selected.request.url
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Method:" }),
-          " ",
-          selected.request.method
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Headers:" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: JSON.stringify(selected.request.headers, null, 2) }),
-        selected.request.body && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Body:" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: selected.request.body })
-        ] })
-      ] }),
-      selected.response && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "detail-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Response" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Status:" }),
-          " ",
-          selected.response.status,
-          " ",
-          selected.response.statusText
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Response Time:" }),
-          " ",
-          selected.response.responseTime,
-          "ms"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Headers:" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: JSON.stringify(selected.response.headers, null, 2) }),
-        selected.response.body && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Body:" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "response-body", children: selected.response.body })
-        ] })
-      ] })
-    ] })
-  ] });
-};
-const TestsTab = ({ testCases, selectedTestCase, onSelectTestCase, onExecuteTest, onDeleteTest, onNewTest }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tests-tab", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tests-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "API Test Cases" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary-button", onClick: onNewTest, children: "+ New Test" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "test-list", children: testCases.map((test) => {
-      const allPassed = test.assertions.every((a) => a.passed);
-      const hasFailed = test.assertions.some((a) => a.passed === false);
-      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          className: `test-item ${(selectedTestCase == null ? void 0 : selectedTestCase.id) === test.id ? "selected" : ""}`,
-          onClick: () => onSelectTestCase(test),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "test-info", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "test-name", children: test.name }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "test-meta", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "request-method-badge", "data-method": test.request.method, children: test.request.method }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "test-url", children: test.request.url })
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "test-actions", children: [
-              test.response && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `test-status ${allPassed ? "passed" : hasFailed ? "failed" : "pending"}`, children: allPassed ? "✅" : hasFailed ? "❌" : "⏳" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: (e) => {
-                e.stopPropagation();
-                onExecuteTest(test.id);
-              }, children: "▶️ Run" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: (e) => {
-                e.stopPropagation();
-                onDeleteTest(test.id);
-              }, children: "🗑️" })
-            ] })
-          ]
-        },
-        test.id
-      );
-    }) }),
-    selectedTestCase && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "test-details", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: selectedTestCase.name }),
-      selectedTestCase.description && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: selectedTestCase.description }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assertions-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-          "Assertions (",
-          selectedTestCase.assertions.length,
-          ")"
-        ] }),
-        selectedTestCase.assertions.map((assertion) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `assertion-item ${assertion.passed ? "passed" : "failed"}`, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assertion-icon", children: assertion.passed ? "✅" : assertion.passed === false ? "❌" : "⏳" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assertion-details", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assertion-type", children: assertion.type }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assertion-message", children: assertion.message }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assertion-values", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                "Expected: ",
-                JSON.stringify(assertion.expected)
-              ] }),
-              assertion.actual !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                "Actual: ",
-                JSON.stringify(assertion.actual)
-              ] })
-            ] })
-          ] })
-        ] }, assertion.id))
-      ] }),
-      selectedTestCase.response && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "response-section", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Last Response" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Status:" }),
-          " ",
-          selectedTestCase.response.status
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Time:" }),
-          " ",
-          selectedTestCase.response.responseTime,
-          "ms"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "response-body", children: selectedTestCase.response.body })
-      ] })
-    ] })
-  ] });
-};
-const MocksTab = ({ mocks, onToggleMock, onNewMock }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mocks-tab", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mocks-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "API Mocks" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary-button", onClick: onNewMock, children: "+ New Mock" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mock-list", children: mocks.map((mock) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mock-item ${mock.enabled ? "enabled" : "disabled"}`, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mock-info", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mock-name", children: mock.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mock-pattern", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "request-method-badge", "data-method": mock.method, children: mock.method }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: mock.pattern })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mock-response", children: [
-          "Status: ",
-          mock.response.status,
-          mock.response.delay && ` | Delay: ${mock.response.delay}ms`
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mock-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "toggle-switch", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            type: "checkbox",
-            checked: mock.enabled,
-            onChange: () => onToggleMock(mock.id)
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider" })
-      ] }) })
-    ] }, mock.id)) }),
-    mocks.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "empty-state", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No mocks configured" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Create a mock to intercept and stub API responses" })
-    ] })
-  ] });
-};
-const BenchmarkTab = ({ benchmarks, onRunBenchmark, onNewBenchmark }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-tab", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Performance Benchmarks" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary-button", onClick: onNewBenchmark, children: "+ New Benchmark" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "benchmark-list", children: benchmarks.map((benchmark) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-item", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-info", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "benchmark-name", children: benchmark.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-endpoint", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "request-method-badge", "data-method": benchmark.method, children: benchmark.method }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: benchmark.endpoint })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-target", children: [
-          "Target: ",
-          benchmark.targetResponseTime,
-          "ms"
-        ] }),
-        benchmark.avgResponseTime !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "benchmark-stats", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Avg:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: benchmark.avgResponseTime <= benchmark.targetResponseTime ? "good" : "bad", children: [
-              benchmark.avgResponseTime.toFixed(2),
-              "ms"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "P50:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              benchmark.p50,
-              "ms"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "P95:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              benchmark.p95,
-              "ms"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "P99:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              benchmark.p99,
-              "ms"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Min:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              benchmark.minResponseTime,
-              "ms"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Max:" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              benchmark.maxResponseTime,
-              "ms"
-            ] })
-          ] })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "benchmark-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => onRunBenchmark(benchmark.id), children: "▶️ Run" }) })
-    ] }, benchmark.id)) }),
-    benchmarks.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "empty-state", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No benchmarks configured" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Create a benchmark to measure API performance" })
-    ] })
-  ] });
-};
-const ContractsTab = () => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "contracts-tab", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "contracts-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Contract Testing" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary-button", children: "+ New Contract" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "empty-state", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Contract testing coming soon" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Define and validate API contracts between providers and consumers" })
-    ] })
-  ] });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(TestExecutorPanel, { scriptId: void 0, scriptCode: script, scriptLanguage: scriptName, onClose });
 };
 function setElementPicked(elementInfo, userGesture) {
   window.playwrightElementPicked(elementInfo, userGesture);
@@ -13381,18 +10957,17 @@ const CrxRecorder = ({}) => {
   const [log, setLog] = reactExports.useState(/* @__PURE__ */ new Map());
   const [mode, setMode] = reactExports.useState("none");
   const [selectedFileId, setSelectedFileId] = reactExports.useState(defaultSettings.targetLanguage);
-  const [showSelfHealing, setShowSelfHealing] = reactExports.useState(false);
-  const [showAISelfHealing, setShowAISelfHealing] = reactExports.useState(false);
-  const [showDDT, setShowDDT] = reactExports.useState(false);
-  const [showDebugger, setShowDebugger] = reactExports.useState(false);
   const [showTestExecutor, setShowTestExecutor] = reactExports.useState(false);
-  const [showApiTesting, setShowApiTesting] = reactExports.useState(false);
   const [showSaveModal, setShowSaveModal] = reactExports.useState(false);
   const [scriptName, setScriptName] = reactExports.useState("");
   const [scriptDescription, setScriptDescription] = reactExports.useState("");
   const [isSaving, setIsSaving] = reactExports.useState(false);
   const [saveError, setSaveError] = reactExports.useState("");
   const [saveSuccess, setSaveSuccess] = reactExports.useState(false);
+  const [projects, setProjects] = reactExports.useState([]);
+  const [selectedProjectId, setSelectedProjectId] = reactExports.useState("");
+  const [projectsLoading, setProjectsLoading] = reactExports.useState(false);
+  const [projectsError, setProjectsError] = reactExports.useState("");
   const [isAuthenticated, setIsAuthenticated] = reactExports.useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = reactExports.useState(true);
   const [showLoginForm, setShowLoginForm] = reactExports.useState(false);
@@ -13513,7 +11088,27 @@ const CrxRecorder = ({}) => {
     setShowSaveModal(true);
     setSaveError("");
     setSaveSuccess(false);
+    setSelectedProjectId("");
   }, [source]);
+  reactExports.useEffect(() => {
+    if (!showSaveModal) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setProjectsLoading(true);
+        setProjectsError("");
+        const list = await apiService.getProjects();
+        if (!cancelled) setProjects(list);
+      } catch (e) {
+        if (!cancelled) setProjectsError((e == null ? void 0 : e.message) || "Failed to load projects");
+      } finally {
+        if (!cancelled) setProjectsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showSaveModal]);
   const handleSaveToDatabase = reactExports.useCallback(async (e) => {
     e.preventDefault();
     if (!scriptName.trim()) {
@@ -13531,7 +11126,8 @@ const CrxRecorder = ({}) => {
         scriptName.trim(),
         source.text,
         selectedFileId,
-        scriptDescription.trim() || void 0
+        scriptDescription.trim() || void 0,
+        selectedProjectId || void 0
       );
       setSaveSuccess(true);
       setTimeout(() => {
@@ -13539,13 +11135,14 @@ const CrxRecorder = ({}) => {
         setScriptName("");
         setScriptDescription("");
         setSaveSuccess(false);
+        setSelectedProjectId("");
       }, 1500);
     } catch (error) {
       setSaveError((error == null ? void 0 : error.message) || "Failed to save script");
     } finally {
       setIsSaving(false);
     }
-  }, [scriptName, scriptDescription, source, selectedFileId]);
+  }, [scriptName, scriptDescription, source, selectedFileId, selectedProjectId]);
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoggingIn(true);
@@ -13581,23 +11178,19 @@ const CrxRecorder = ({}) => {
       setIsRegistering(false);
     }
   };
-  const toggleSelfHealing = reactExports.useCallback(() => {
-    setShowSelfHealing((prev) => !prev);
-  }, []);
-  const toggleAISelfHealing = reactExports.useCallback(() => {
-    setShowAISelfHealing((prev) => !prev);
-  }, []);
-  const toggleDDT = reactExports.useCallback(() => {
-    setShowDDT((prev) => !prev);
-  }, []);
-  const toggleDebugger = reactExports.useCallback(() => {
-    setShowDebugger((prev) => !prev);
-  }, []);
+  const handleLogout = async () => {
+    try {
+      await apiService.logout();
+      setIsAuthenticated(false);
+      setUserEmail("");
+    } catch (error) {
+      apiService.clearTokens();
+      setIsAuthenticated(false);
+      setUserEmail("");
+    }
+  };
   const toggleTestExecutor = reactExports.useCallback(() => {
     setShowTestExecutor((prev) => !prev);
-  }, []);
-  const toggleApiTesting = reactExports.useCallback(() => {
-    setShowApiTesting((prev) => !prev);
   }, []);
   reactExports.useEffect(() => {
     if (!settings2.experimental)
@@ -13768,6 +11361,24 @@ const CrxRecorder = ({}) => {
           )
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "auth-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Project" }),
+          projectsError && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "auth-error", style: { marginBottom: "8px" }, children: projectsError }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "select",
+            {
+              value: selectedProjectId,
+              onChange: (e) => setSelectedProjectId(e.target.value),
+              disabled: isSaving || saveSuccess || projectsLoading,
+              style: { width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc", background: projectsLoading ? "#f0f0f0" : void 0 },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "No project" }),
+                projects.map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p.id, children: p.name }, p.id))
+              ]
+            }
+          ),
+          projectsLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { marginTop: "6px", fontSize: "12px", color: "#6c757d" }, children: "Loading projects…" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "auth-field", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("label", { children: "Language" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
@@ -13805,16 +11416,18 @@ const CrxRecorder = ({}) => {
       ] })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "recorder", children: [
+      isAuthenticated && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "auth-status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "authenticated", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "status-indicator", children: [
+          "Signed in as ",
+          userEmail || "current user"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "logout-btn", onClick: handleLogout, children: "Logout" })
+      ] }) }),
       settings2.experimental && /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Toolbar, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "save", title: "Save to File", disabled: false, onClick: saveCode, children: "Save File" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "cloud-upload", title: "Save to Database", disabled: false, onClick: saveToDatabase, children: "Save DB" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarSeparator, {}),
         /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "debug-console", title: "Test Executor", disabled: false, onClick: toggleTestExecutor, children: "Execute" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "debug-alt", title: "Debugger", disabled: false, onClick: toggleDebugger, children: "Debug" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "plug", title: "API Testing", disabled: false, onClick: toggleApiTesting, children: "API" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "sparkle", title: "Self-Healing", disabled: false, onClick: toggleSelfHealing, children: "Heal" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "brain", title: "AI Self-Healing", disabled: false, onClick: toggleAISelfHealing, children: "AI" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "database", title: "Data-Driven Testing", disabled: false, onClick: toggleDDT, children: "Data" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: "auto" } }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "dropdown", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "tools", title: "Tools", disabled: false, onClick: () => {
@@ -13825,15 +11438,7 @@ const CrxRecorder = ({}) => {
         /* @__PURE__ */ jsxRuntimeExports.jsx(ToolbarButton, { icon: "settings-gear", title: "Preferences", onClick: showPreferences })
       ] }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Recorder, { sources, paused, log, mode, onEditedCode: dispatchEditedCode, onCursorActivity: dispatchCursorActivity }),
-      showSelfHealing && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 0, right: 0, width: "400px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelfHealingUI, { onClose: toggleSelfHealing }) }),
-      showAISelfHealing && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 0, right: 0, width: "550px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AISelfHealingUI, { onClose: toggleAISelfHealing }) }),
-      showDDT && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "absolute", top: 0, right: 0, width: "500px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(DDTManager, { onFileSelected: (fileId) => console.log("Selected file:", fileId) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: toggleDDT, style: { position: "absolute", top: "10px", right: "10px" }, children: "Close" })
-      ] }),
-      showDebugger && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", bottom: 0, left: 0, right: 0, height: "300px", background: "var(--vscode-sideBar-background)", borderTop: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DebuggerUI, { onClose: toggleDebugger }) }),
-      showTestExecutor && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 0, right: 0, width: "450px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TestExecutorUI, { onClose: toggleTestExecutor, script: (source == null ? void 0 : source.text) || "", scriptName: selectedFileId }) }),
-      showApiTesting && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 0, right: 0, width: "550px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ApiTestingUI, { onClose: toggleApiTesting }) })
+      showTestExecutor && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 0, right: 0, width: "450px", height: "100%", background: "var(--vscode-sideBar-background)", borderLeft: "1px solid var(--vscode-panel-border)", zIndex: 1e3, overflow: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TestExecutorUI, { onClose: toggleTestExecutor, script: (source == null ? void 0 : source.text) || "", scriptName: selectedFileId }) })
     ] })
   ] });
 };
