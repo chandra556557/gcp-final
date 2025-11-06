@@ -37,7 +37,6 @@ const swaggerDefinition = {
             }
           },
           testIdAttribute: { type: 'string' },
-          selfHealingEnabled: { type: 'boolean' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
           projectId: { type: 'string' }
@@ -234,8 +233,7 @@ const swaggerDefinition = {
                   description: { type: 'string' },
                   browserType: { type: 'string' },
                   viewport: { type: 'object' },
-                  testIdAttribute: { type: 'string' },
-                  selfHealingEnabled: { type: 'boolean' }
+                  testIdAttribute: { type: 'string' }
                 }
               }
             }

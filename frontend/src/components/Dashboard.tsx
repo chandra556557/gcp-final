@@ -3,7 +3,8 @@ import axios from 'axios';
 import ApiTesting from './ApiTesting';
 import './Dashboard.css';
 
-const API_URL = 'http://localhost:3000/api';
+const BACKEND_BASE_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:3001';
+const API_URL = `${BACKEND_BASE_URL}/api`;
 
 interface Project {
   id: string;
@@ -26,7 +27,7 @@ interface TestRun {
   status: string;
   duration?: number;
   startedAt: string;
-  allureReportUrl?: string;
+  executionReportUrl?: string;
   script: { name: string };
 }
 
@@ -527,11 +528,11 @@ export const Dashboard: React.FC = () => {
                           </div>
                         </div>
                         <div className="run-actions">
-                          {run.allureReportUrl ? (
+                          {run.executionReportUrl ? (
                             <button
                               className="btn-secondary"
                               onClick={() => {
-                                setSelectedReport(run.allureReportUrl!);
+                                setSelectedReport(run.executionReportUrl!);
                                 setActiveView('allure');
                               }}
                             >
@@ -938,7 +939,7 @@ export const Dashboard: React.FC = () => {
                     </button>
                   </div>
                   <iframe
-                    src={`http://localhost:3000${selectedReport}`}
+                    src={`${BACKEND_BASE_URL}${selectedReport}`}
                     className="report-iframe"
                     title="Allure Report"
                   />

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AppError } from '../middleware/errorHandler';
-import pool from '../db';
+import db from '../db';
 import { randomUUID } from 'crypto';
 
 
@@ -29,7 +29,7 @@ export const getScripts = async (req: Request, res: Response) => {
     
     query += ` ORDER BY s."createdAt" DESC`;
 
-    const { rows } = await pool.query(query, params);
+    const { rows } = await db.query(query, params);
 
     const scripts = rows.map(r => ({
       id: r.id,
@@ -64,9 +64,9 @@ export const getScript = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT s.id, s.name, s.description, s.language, s.code, s."browserType" as "browserType",
-              s.viewport, s."testIdAttribute" as "testIdAttribute", s."selfHealingEnabled" as "selfHealingEnabled",
+              s.viewport, s."testIdAttribute" as "testIdAttribute",
               s."createdAt" as "createdAt", s."updatedAt" as "updatedAt", s."projectId" as "projectId",
               p.name AS "projectName"
        FROM "Script" s
@@ -91,7 +91,6 @@ export const getScript = async (req: Request, res: Response) => {
         browserType: script.browserType,
         viewport: script.viewport,
         testIdAttribute: script.testIdAttribute,
-        selfHealingEnabled: script.selfHealingEnabled,
         createdAt: script.createdAt,
         updatedAt: script.updatedAt,
         projectId: script.projectId,
@@ -127,12 +126,12 @@ export const createScript = async (req: Request, res: Response) => {
     }
 
     const id = randomUUID();
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO "Script" (id, name, description, language, code, "userId", "projectId",
                               "browserType", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, COALESCE($4, 'typescript'), $5, $6, $7, 'chromium', now(), now())
        RETURNING id, name, description, language, code, "browserType", viewport, "testIdAttribute",
-                 "selfHealingEnabled", "createdAt", "updatedAt", "projectId"`,
+                 "createdAt", "updatedAt", "projectId"`,
       [id, name, description ?? null, language, code, userId, projectId ?? null]
     );
     const script = rows[0];
@@ -163,10 +162,10 @@ export const updateScript = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
-    const { name, description, language, code, browserType, viewport, testIdAttribute, selfHealingEnabled } = req.body;
+    const { name, description, language, code, browserType, viewport, testIdAttribute } = req.body;
 
     // Check if script exists and belongs to user
-    const existing = await pool.query(
+    const existing = await db.query(
       `SELECT id FROM "Script" WHERE id = $1 AND "userId" = $2`,
       [id, userId]
     );
@@ -175,7 +174,7 @@ export const updateScript = async (req: Request, res: Response) => {
       throw new AppError('Script not found', 404);
     }
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE "Script"
        SET name = COALESCE($2, name),
            description = $3,
@@ -184,12 +183,11 @@ export const updateScript = async (req: Request, res: Response) => {
            "browserType" = $6,
            viewport = $7,
            "testIdAttribute" = $8,
-           "selfHealingEnabled" = $9,
            "updatedAt" = now()
        WHERE id = $1
        RETURNING id, name, description, language, code, "browserType", viewport, "testIdAttribute",
-                 "selfHealingEnabled", "createdAt", "updatedAt", "projectId"`,
-      [id, name ?? null, description ?? null, language ?? null, code ?? null, browserType ?? null, viewport ?? null, testIdAttribute ?? null, selfHealingEnabled ?? null]
+                 "createdAt", "updatedAt", "projectId"`,
+      [id, name ?? null, description ?? null, language ?? null, code ?? null, browserType ?? null, viewport ?? null, testIdAttribute ?? null]
     );
     const script = rows[0];
 
@@ -220,7 +218,7 @@ export const deleteScript = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const existing = await pool.query(
+    const existing = await db.query(
       `SELECT id FROM "Script" WHERE id = $1 AND "userId" = $2`,
       [id, userId]
     );
@@ -229,7 +227,7 @@ export const deleteScript = async (req: Request, res: Response) => {
       throw new AppError('Script not found', 404);
     }
 
-    await pool.query(
+    await db.query(
       `DELETE FROM "Script" WHERE id = $1`,
       [id]
     );

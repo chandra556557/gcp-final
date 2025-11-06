@@ -5,7 +5,7 @@
       "name": "chromium",
       "revision": "1178",
       "installByDefault": true,
-      "browserVersion": "138.0.7204.15"
+      "browserVersion": "134.0.6998.35"
     },
     {
       "name": "chromium-headless-shell",
@@ -29,7 +29,7 @@
       "name": "firefox",
       "revision": "1487",
       "installByDefault": true,
-      "browserVersion": "139.0"
+      "browserVersion": "135.0"
     },
     {
       "name": "firefox-beta",
@@ -55,7 +55,7 @@
         "ubuntu20.04-x64": "2092",
         "ubuntu20.04-arm64": "2092"
       },
-      "browserVersion": "18.5"
+      "browserVersion": "18.4"
     },
     {
       "name": "ffmpeg",

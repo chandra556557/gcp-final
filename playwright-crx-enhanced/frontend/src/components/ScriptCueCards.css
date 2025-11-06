@@ -3,6 +3,9 @@
   margin-top: 16px;
   border-top: 1px dashed #e5e7eb;
   padding-top: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* prevent children from visually overlapping outside container */
 }
 
 .cue-steps-header {
@@ -60,21 +63,15 @@
 
 .cue-steps-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  /* Make columns responsive to container width to prevent compression/overlap */
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
+  width: 100%;
+  align-items: stretch;
+  justify-items: stretch;
 }
 
-@media (max-width: 1200px) {
-  .cue-steps-grid {
-    grid-template-columns: repeat(2, minmax(200px, 1fr));
-  }
-}
-
-@media (max-width: 800px) {
-  .cue-steps-grid {
-    grid-template-columns: repeat(1, minmax(220px, 1fr));
-  }
-}
+/* Container-responsive grid handles wrapping; remove viewport-only breakpoints */
 
 .cue-step-card {
   background: #fff;
@@ -86,6 +83,10 @@
   gap: 10px;
   transition: box-shadow 0.2s, transform 0.2s;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
+  height: 100%; /* stretch to grid cell to avoid stacking visuals */
+  box-sizing: border-box;
 }
 .cue-step-card::before {
   content: '';
@@ -110,6 +111,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap; /* ensure header content wraps on narrow widths */
 }
 .cue-step-icon {
   width: 36px;
@@ -148,5 +150,5 @@
   justify-content: flex-end;
 }
 .step-action {
-  white-space: nowrap;
+  white-space: normal; /* allow button text to wrap to avoid forcing overflow */
 }

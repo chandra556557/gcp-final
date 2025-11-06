@@ -16,6 +16,7 @@ import testRunRoutes from './routes/testRun.routes';
 import extensionRoutes from './routes/extension.routes';
 import allureRoutes from './routes/allure.routes';
 import apiTestingRoutes from './routes/apiTesting.routes';
+import testDataRoutes from './routes/testData.routes';
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -38,7 +39,36 @@ if (isDev) {
       useDefaults: true,
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        'frame-ancestors': ["'self'", 'http://localhost:5173']
+        // Allow embedding from the frontend dev server
+        'frame-ancestors': ["'self'", 'http://localhost:5173', 'http://localhost:5174'],
+        // Permit Google Tag Manager / Analytics scripts
+        'script-src': [
+          "'self'",
+          'https://www.googletagmanager.com',
+          'https://www.google-analytics.com',
+          // Allow the specific inline script by hash (seen in error message)
+          "'sha256-ZEO1KV65XkTkSpzaBmRbkWT85nyTbfZu7A+H2t0RpnM='"
+        ],
+        // Some browsers differentiate element-based script loads
+        'script-src-elem': [
+          "'self'",
+          'https://www.googletagmanager.com',
+          'https://www.google-analytics.com',
+          // Allow the same inline script by hash in element context
+          "'sha256-ZEO1KV65XkTkSpzaBmRbkWT85nyTbfZu7A+H2t0RpnM='"
+        ],
+        // Allow analytics connections
+        'connect-src': [
+          "'self'",
+          'https://www.google-analytics.com',
+          'https://www.googletagmanager.com'
+        ],
+        // Allow images and beacons used by analytics
+        'img-src': [
+          "'self'",
+          'data:',
+          'https://www.google-analytics.com'
+        ]
       }
     },
     frameguard: false,
@@ -109,7 +139,7 @@ app.get('/api', (_req, res) => {
       '/api/projects/*',
       '/api/scripts/*',
       '/api/test-runs/*',
-      // Test data endpoints removed
+      '/api/test-data/*',
       '/api/api-testing/*',
       '/api/extensions/*',
       '/api/allure',
@@ -122,6 +152,45 @@ app.get('/api', (_req, res) => {
 app.get('/api-docs.json', (_req, res) => { res.json(swaggerSpec); });
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Relaxed CSP specifically for static reports that rely on inline scripts/styles
+app.use('/allure-reports', helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'frame-ancestors': ["'self'", 'http://localhost:5173', 'http://localhost:5174'],
+      'script-src': [
+        "'self'",
+        "'unsafe-inline'",
+        'https://www.googletagmanager.com',
+        'https://www.google-analytics.com'
+      ],
+      'script-src-elem': [
+        "'self'",
+        "'unsafe-inline'",
+        'https://www.googletagmanager.com',
+        'https://www.google-analytics.com'
+      ],
+      'style-src': [
+        "'self'",
+        "'unsafe-inline'"
+      ],
+      'connect-src': [
+        "'self'",
+        'https://www.google-analytics.com',
+        'https://www.googletagmanager.com'
+      ],
+      'img-src': [
+        "'self'",
+        'data:',
+        'https://www.google-analytics.com'
+      ]
+    }
+  },
+  frameguard: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
 app.use('/allure-reports', express.static(path.join(process.cwd(), 'allure-reports')));
 
 app.use('/api/auth', authRoutes);
@@ -131,6 +200,7 @@ app.use('/api/test-runs', testRunRoutes);
 app.use('/api/extensions', extensionRoutes);
 app.use('/api/allure', allureRoutes);
 app.use('/api/api-testing', apiTestingRoutes);
+app.use('/api/test-data', testDataRoutes);
 
 app.use((_req, res) => { res.status(404).json({ error: 'Route not found' }); });
 app.use(errorHandler);

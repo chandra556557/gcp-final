@@ -1,0 +1,13 @@
+[
+  {
+    "id": "cdaa07dd-c2e2-4e1f-ba57-4c73a12edf20",
+    "projectId": null,
+    "scriptId": "99483b04-ef5f-4ab1-80a9-c9d766f22af2",
+    "scriptName": "qwert123",
+    "status": "passed",
+    "startedAt": "2025-11-05T11:18:12.153Z",
+    "completedAt": "2025-11-05T11:18:14.246Z",
+    "reportUrl": "/allure-reports/cdaa07dd-c2e2-4e1f-ba57-4c73a12edf20/index.html",
+    "createdAt": "2025-11-05T11:57:23.699Z"
+  }
+]

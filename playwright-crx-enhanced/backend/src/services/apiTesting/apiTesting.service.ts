@@ -1,4 +1,4 @@
-import pool from '../../db';
+import db from '../../db';
 
 export interface ApiTestSuite {
   id: number;
@@ -81,7 +81,7 @@ export class ApiTestingService {
     headers?: Record<string, string>;
     authConfig?: any;
   }): Promise<ApiTestSuite> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO api_test_suites 
        (name, description, user_id, base_url, headers, auth_config)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -99,7 +99,7 @@ export class ApiTestingService {
   }
 
   async getSuites(userId: number): Promise<ApiTestSuite[]> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_test_suites WHERE user_id = $1 ORDER BY created_at DESC`,
       [userId]
     );
@@ -107,7 +107,7 @@ export class ApiTestingService {
   }
 
   async getSuite(id: number, userId: number): Promise<ApiTestSuite | null> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_test_suites WHERE id = $1 AND user_id = $2`,
       [id, userId]
     );
@@ -139,7 +139,7 @@ export class ApiTestingService {
     if (updates.length === 0) return null;
 
     values.push(id, userId);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE api_test_suites SET ${updates.join(', ')} 
        WHERE id = $${paramIndex++} AND user_id = $${paramIndex}
        RETURNING *`,
@@ -149,7 +149,7 @@ export class ApiTestingService {
   }
 
   async deleteSuite(id: number, userId: number): Promise<boolean> {
-    const { rowCount } = await pool.query(
+    const { rowCount } = await db.query(
       `DELETE FROM api_test_suites WHERE id = $1 AND user_id = $2`,
       [id, userId]
     );
@@ -169,7 +169,7 @@ export class ApiTestingService {
     expectedStatus?: number;
     assertions?: any[];
   }): Promise<ApiTestCase> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO api_test_cases 
        (suite_id, name, description, method, endpoint, headers, body, expected_status, assertions)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -190,7 +190,7 @@ export class ApiTestingService {
   }
 
   async getTestCases(suiteId: number): Promise<ApiTestCase[]> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_test_cases WHERE suite_id = $1 ORDER BY created_at DESC`,
       [suiteId]
     );
@@ -205,7 +205,7 @@ export class ApiTestingService {
     assertionResults: any[];
   }> {
     // Get test case with suite info
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT tc.*, ts.base_url, ts.headers as suite_headers, ts.auth_config
        FROM api_test_cases tc
        JOIN api_test_suites ts ON ts.id = tc.suite_id
@@ -318,7 +318,7 @@ export class ApiTestingService {
     contractType: ApiContract['contract_type'];
     contractData: any;
   }): Promise<ApiContract> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO api_contracts 
        (suite_id, name, version, contract_type, contract_data)
        VALUES ($1, $2, $3, $4, $5)
@@ -329,7 +329,7 @@ export class ApiTestingService {
   }
 
   async getContracts(suiteId: number): Promise<ApiContract[]> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_contracts WHERE suite_id = $1 ORDER BY created_at DESC`,
       [suiteId]
     );
@@ -346,7 +346,7 @@ export class ApiTestingService {
     responseStatus?: number;
     responseBody?: string;
   }): Promise<ApiMock> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO api_mocks 
        (suite_id, name, endpoint, method, response_status, response_body)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -357,7 +357,7 @@ export class ApiTestingService {
   }
 
   async getMocks(suiteId: number): Promise<ApiMock[]> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_mocks WHERE suite_id = $1 ORDER BY created_at DESC`,
       [suiteId]
     );
@@ -374,7 +374,7 @@ export class ApiTestingService {
     success: boolean;
     errorMsg?: string;
   }): Promise<void> {
-    await pool.query(
+    await db.query(
       `INSERT INTO api_performance_benchmarks 
        (test_case_id, run_id, response_time, status_code, success, error_msg)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -383,7 +383,7 @@ export class ApiTestingService {
   }
 
   async getBenchmarks(testCaseId: number, limit: number = 100): Promise<ApiPerformanceBenchmark[]> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM api_performance_benchmarks 
        WHERE test_case_id = $1 
        ORDER BY timestamp DESC 
@@ -400,7 +400,7 @@ export class ApiTestingService {
     successRate: number;
     totalRuns: number;
   }> {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT 
          AVG(response_time) as avg_response_time,
          MIN(response_time) as min_response_time,

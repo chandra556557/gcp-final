@@ -2,7 +2,7 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { logger } from '../../utils/logger';
 import { randomUUID } from 'crypto';
-import pool from '../../db';
+import db from '../../db';
 
 
 interface TokenPayload {
@@ -20,7 +20,9 @@ export class AuthService {
   constructor() {
     this.accessTokenSecret = process.env.JWT_ACCESS_SECRET || 'dev-access-secret';
     this.refreshTokenSecret = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret';
-    this.accessTokenExpiry = '10h';
+    // Access token lifetime: 1 hour
+    this.accessTokenExpiry = '1h';
+    // Refresh token lifetime unchanged
     this.refreshTokenExpiry = '15h';
   }
 
@@ -30,9 +32,9 @@ export class AuthService {
   async register(email: string, password: string, name: string) {
     let existing;
     try {
-      existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     } catch (_err) {
-      existing = await pool.query('SELECT id FROM "User" WHERE email = $1', [email]);
+      existing = await db.query('SELECT id FROM "User" WHERE email = $1', [email]);
     }
     if (existing.rowCount && existing.rows[0]) {
       throw new Error('User already exists with this email');
@@ -41,14 +43,14 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
     let user;
     try {
-      const insertUser = await pool.query(
+      const insertUser = await db.query(
         'INSERT INTO users(email, password, name) VALUES ($1,$2,$3) RETURNING id,email,name',
         [email, hashedPassword, name]
       );
       user = insertUser.rows[0];
     } catch (_err) {
       const userId = randomUUID();
-      const insertUser = await pool.query(
+      const insertUser = await db.query(
         'INSERT INTO "User"(id,email,password,name,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,now(),now()) RETURNING id,email,name',
         [userId, email, hashedPassword, name]
       );
@@ -67,7 +69,8 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
-      expiresIn: 36000
+      // seconds
+      expiresIn: 3600
     };
   }
 
@@ -77,12 +80,12 @@ export class AuthService {
   async login(email: string, password: string) {
     let userRes;
     try {
-      userRes = await pool.query(
+      userRes = await db.query(
         'SELECT id,email,password,name FROM users WHERE email = $1',
         [email]
       );
     } catch (_err) {
-      userRes = await pool.query(
+      userRes = await db.query(
         'SELECT id,email,password,name FROM "User" WHERE email = $1',
         [email]
       );
@@ -109,7 +112,8 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
-      expiresIn: 36000
+      // seconds
+      expiresIn: 3600
     };
   }
 
@@ -125,7 +129,7 @@ export class AuthService {
 
       let tokenRes;
       try {
-        tokenRes = await pool.query(
+        tokenRes = await db.query(
           `SELECT id FROM "RefreshToken"
            WHERE token = $1 AND "userId" = $2 AND "expiresAt" > now() AND revokedAt IS NULL`,
           [refreshToken, decoded.userId]
@@ -140,12 +144,12 @@ export class AuthService {
 
       let userRes;
       try {
-        userRes = await pool.query(
+        userRes = await db.query(
           'SELECT id,email FROM users WHERE id = $1',
           [decoded.userId]
         );
       } catch (_err) {
-        userRes = await pool.query(
+        userRes = await db.query(
           'SELECT id,email FROM "User" WHERE id = $1',
           [decoded.userId]
         );
@@ -158,7 +162,8 @@ export class AuthService {
       const accessToken = this.generateAccessToken(user.id, user.email);
       return {
         accessToken,
-        expiresIn: 36000
+        // seconds
+        expiresIn: 3600
       };
     } catch (error) {
       logger.error('Refresh token error:', error as any);
@@ -172,7 +177,7 @@ export class AuthService {
   async logout(refreshToken: string) {
     try {
       try {
-        await pool.query(
+        await db.query(
           'UPDATE "RefreshToken" SET revokedAt = now() WHERE token = $1',
           [refreshToken]
         );
@@ -195,7 +200,7 @@ export class AuthService {
     const refreshToken = this.generateRefreshToken(userId);
 
     try {
-      await pool.query(
+      await db.query(
         'INSERT INTO "RefreshToken"(id,token,"userId","expiresAt","createdAt") VALUES ($1,$2,$3,$4,now())',
         [randomUUID(), refreshToken, userId, new Date(Date.now() + 15 * 60 * 60 * 1000)]
       );
@@ -248,7 +253,7 @@ export class AuthService {
    */
   async cleanupExpiredTokens() {
     try {
-      const result = await pool.query(
+      const result = await db.query(
         'DELETE FROM "RefreshToken" WHERE "expiresAt" < now()'
       );
       logger.info(`Cleaned up ${result.rowCount} expired tokens`);

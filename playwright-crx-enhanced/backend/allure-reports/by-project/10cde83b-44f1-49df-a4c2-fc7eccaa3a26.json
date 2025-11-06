@@ -1,0 +1,13 @@
+[
+  {
+    "id": "50a15fc6-2cf3-4eaa-9780-b2414d91e6cc",
+    "projectId": "10cde83b-44f1-49df-a4c2-fc7eccaa3a26",
+    "scriptId": "dcc6ee33-3f0d-46e3-9d5b-c7e5da68bac3",
+    "scriptName": "playtest",
+    "status": "passed",
+    "startedAt": "2025-11-05T07:09:11.704Z",
+    "completedAt": "2025-11-05T07:09:13.951Z",
+    "reportUrl": "/allure-reports/50a15fc6-2cf3-4eaa-9780-b2414d91e6cc/index.html",
+    "createdAt": "2025-11-05T10:21:47.892Z"
+  }
+]

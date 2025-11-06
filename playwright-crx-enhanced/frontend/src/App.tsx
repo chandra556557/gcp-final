@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Dashboard from './components/Dashboard';
@@ -62,23 +62,40 @@ function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const authCheckedRef = useRef(false);
 
   useEffect(() => {
-    checkAuth();
+    // Attach a response interceptor to handle 401s centrally
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error?.response?.status === 401) {
+          // Token invalid or expired: clear and update UI state
+          localStorage.removeItem('accessToken');
+          setIsAuthenticated(false);
+          delete axios.defaults.headers.common['Authorization'];
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    // Perform a lightweight auth check without hitting heavy endpoints
+    if (!authCheckedRef.current) {
+      authCheckedRef.current = true;
+      checkAuth();
+    }
+
+    // Eject interceptor on unmount to avoid duplicates in dev StrictMode
+    return () => {
+      axios.interceptors.response.eject(interceptorId);
+    };
   }, []);
 
-  const checkAuth = async () => {
+  const checkAuth = () => {
     const token = localStorage.getItem('accessToken');
-    if (token) {
-      try {
-        // Just verify the token is valid
-        await axios.get(`${API_URL}/scripts`, { headers: { Authorization: `Bearer ${token}` } });
-        setIsAuthenticated(true);
-      } catch (err) {
-        localStorage.removeItem('accessToken');
-        delete axios.defaults.headers.common['Authorization'];
-      }
-    }
+    // Trust presence of token; backend will respond with 401 if invalid,
+    // which we handle via the interceptor above.
+    setIsAuthenticated(!!token);
   };
 
   const handleLogin = async (e: React.FormEvent) => {

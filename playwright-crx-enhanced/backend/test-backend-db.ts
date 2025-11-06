@@ -14,7 +14,7 @@
  *   tsx test-backend-db.ts
  */
 
-import pool from './src/db';
+import db from './src/db';
 import dotenv from 'dotenv';
 import * as http from 'http';
 

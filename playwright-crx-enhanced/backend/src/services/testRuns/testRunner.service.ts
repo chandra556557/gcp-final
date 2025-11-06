@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { logger } from '../../utils/logger';
-import pool from '../../db';
+import db from '../../db';
 
 interface TestStep {
   stepNumber: number;
@@ -27,13 +27,13 @@ export class TestRunnerService {
       const context: TestRunContext = { testRunId, scriptId, userId, ws };
       this.activeRuns.set(testRunId, context);
 
-      await pool.query(`UPDATE "TestRun" SET status = 'running' WHERE id = $1`, [testRunId]);
+      await db.query(`UPDATE "TestRun" SET status = 'running' WHERE id = $1`, [testRunId]);
 
       if (ws) {
         this.sendWebSocketMessage(ws, { type: 'TEST_STARTED', testRunId, scriptId, timestamp: Date.now() });
       }
 
-      const { rows: scriptRows } = await pool.query(
+      const { rows: scriptRows } = await db.query(
         `SELECT code FROM "Script" WHERE id = $1 AND "userId" = $2`,
         [scriptId, userId]
       );
@@ -42,7 +42,7 @@ export class TestRunnerService {
 
       await this.executeScript(context, script.code);
 
-      await pool.query(
+      await db.query(
         `UPDATE "TestRun" SET status = 'passed', "completedAt" = now() WHERE id = $1`,
         [testRunId]
       );
@@ -55,7 +55,7 @@ export class TestRunnerService {
     } catch (error: any) {
       logger.error('Test execution failed:', error);
 
-      await pool.query(
+      await db.query(
         `UPDATE "TestRun" SET status = 'failed', "errorMsg" = $2, "completedAt" = now() WHERE id = $1`,
         [testRunId, error.message]
       );
@@ -71,7 +71,7 @@ export class TestRunnerService {
   async stopTestRun(testRunId: string): Promise<void> {
     const context = this.activeRuns.get(testRunId);
     if (context) {
-      await pool.query(
+      await db.query(
         `UPDATE "TestRun" SET status = 'cancelled', "completedAt" = now() WHERE id = $1`,
         [testRunId]
       );
@@ -88,7 +88,7 @@ export class TestRunnerService {
     const steps: TestStep[] = this.parseScriptSteps(code);
 
     for (const step of steps) {
-      await pool.query(
+      await db.query(
         `INSERT INTO "TestStep" (id, "testRunId", "stepNumber", action, selector, value, status, "timestamp")
          VALUES ($1, $2, $3, $4, $5, $6, 'running', now())`,
         [`${context.testRunId}-${step.stepNumber}`, context.testRunId, step.stepNumber, step.action, step.selector ?? null, step.value ?? null]
@@ -100,7 +100,7 @@ export class TestRunnerService {
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      await pool.query(
+      await db.query(
         `UPDATE "TestStep" SET status = 'passed', duration = 500 WHERE id = $1`,
         [`${context.testRunId}-${step.stepNumber}`]
       );

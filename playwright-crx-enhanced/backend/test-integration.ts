@@ -21,7 +21,7 @@ import * as http from 'http';
 import * as https from 'https';
 import WebSocket from 'ws';
 import dotenv from 'dotenv';
-import pool from './src/db';
+import db from './src/db';
 
 dotenv.config();
 
@@ -642,7 +642,7 @@ async function main() {
 
   // Clean up database connection
   try {
-    await pool.end();
+    await db.end();
     const failedCount = results.filter((r) => !r.passed).length;
     process.exit(failedCount === 0 ? 0 : 1);
   } catch (error) {

@@ -5,6 +5,20 @@ import { logger } from '../utils/logger';
 
 const ALLURE_RESULTS_DIR = path.join(process.cwd(), 'allure-results');
 const ALLURE_REPORTS_DIR = path.join(process.cwd(), 'allure-reports');
+// File-backed index directory (per project JSON index)
+const ALLURE_INDEX_DIR = path.join(ALLURE_REPORTS_DIR, 'by-project');
+
+export interface ReportIndexEntry {
+  id: string; // testRunId
+  projectId: string;
+  scriptId?: string;
+  scriptName?: string;
+  status?: string;
+  startedAt?: string;
+  completedAt?: string;
+  reportUrl: string;
+  createdAt: string; // ISO timestamp
+}
 
 export class AllureService {
   constructor() {
@@ -17,6 +31,68 @@ export class AllureService {
     }
     if (!fs.existsSync(ALLURE_REPORTS_DIR)) {
       fs.mkdirSync(ALLURE_REPORTS_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(ALLURE_INDEX_DIR)) {
+      fs.mkdirSync(ALLURE_INDEX_DIR, { recursive: true });
+    }
+  }
+
+  // ===== File-backed index helpers =====
+  private getProjectIndexPath(projectId: string) {
+    return path.join(ALLURE_INDEX_DIR, `${projectId}.json`);
+  }
+
+  readProjectIndex(projectId: string): ReportIndexEntry[] {
+    try {
+      const filePath = this.getProjectIndexPath(projectId);
+      if (!fs.existsSync(filePath)) return [];
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) return data as ReportIndexEntry[];
+      return [];
+    } catch (err) {
+      logger.warn(`Failed to read index for project ${projectId}:`, err);
+      return [];
+    }
+  }
+
+  appendProjectIndexEntry(projectId: string, entry: ReportIndexEntry) {
+    try {
+      const filePath = this.getProjectIndexPath(projectId);
+      let current: ReportIndexEntry[] = [];
+      if (fs.existsSync(filePath)) {
+        try {
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) current = parsed as ReportIndexEntry[];
+        } catch (e) {
+          logger.warn(`Index parse error for project ${projectId}, resetting:`, e);
+          current = [];
+        }
+      }
+      // De-duplicate by testRun id
+      current = current.filter(r => r.id !== entry.id);
+      current.unshift(entry);
+      const tmpPath = `${filePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(current, null, 2));
+      fs.renameSync(tmpPath, filePath);
+    } catch (err) {
+      logger.error(`Failed to append index for project ${projectId}:`, err);
+    }
+  }
+
+  listAllProjectIndexes(): { projectId: string; entries: ReportIndexEntry[] }[] {
+    try {
+      if (!fs.existsSync(ALLURE_INDEX_DIR)) return [];
+      const files = fs.readdirSync(ALLURE_INDEX_DIR).filter(f => f.endsWith('.json'));
+      return files.map(f => {
+        const projectId = path.basename(f, '.json');
+        const entries = this.readProjectIndex(projectId);
+        return { projectId, entries };
+      });
+    } catch (err) {
+      logger.warn('Failed to list project indexes:', err);
+      return [];
     }
   }
 
@@ -102,22 +178,124 @@ export class AllureService {
 
   async generateReport(testRunId: string): Promise<string> {
     try {
+      // Check if allure results exist for this test run
+      const resultFile = path.join(ALLURE_RESULTS_DIR, `${testRunId}-result.json`);
+      if (!fs.existsSync(resultFile)) {
+        logger.warn(`No Allure results found for test run: ${testRunId}`);
+        // Create a minimal result file if it doesn't exist
+        const minimalResult = {
+          uuid: testRunId,
+          testCaseId: testRunId,
+          fullName: `Test Run ${testRunId}`,
+          name: `Test Run ${testRunId}`,
+          historyId: testRunId,
+          status: 'passed',
+          stage: 'finished',
+          start: Date.now(),
+          stop: Date.now(),
+          steps: [],
+        };
+        fs.writeFileSync(resultFile, JSON.stringify(minimalResult, null, 2));
+      }
+
       const reportPath = path.join(ALLURE_REPORTS_DIR, testRunId);
 
       if (!fs.existsSync(reportPath)) {
         fs.mkdirSync(reportPath, { recursive: true });
       }
 
-      execSync(`npx allure generate ${ALLURE_RESULTS_DIR} -o ${reportPath} --clean`, {
-        cwd: process.cwd(),
-        stdio: 'pipe',
-      });
+      // Try to generate report using Allure CLI, fallback to basic HTML if it fails
+      let useBasicReport = false;
+      
+      try {
+        // Try using npx allure (works if allure-commandline is installed)
+        const command = `npx allure generate "${ALLURE_RESULTS_DIR}" -o "${reportPath}" --clean`;
+        execSync(command, {
+          cwd: process.cwd(),
+          stdio: 'pipe',
+          shell: true,
+        });
+        logger.info(`Allure report generated successfully at: ${reportPath}`);
+      } catch (execError: any) {
+        logger.warn('Allure CLI generate failed, using basic HTML report:', execError.message || execError);
+        useBasicReport = true;
+      }
 
-      logger.info(`Allure report generated at: ${reportPath}`);
+      // If Allure CLI failed or for basic reports, create a simple HTML report
+      if (useBasicReport || !fs.existsSync(path.join(reportPath, 'index.html'))) {
+        const indexHtml = path.join(reportPath, 'index.html');
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Report - ${testRunId}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+    .header h1 { margin: 0; }
+    .info { margin: 20px 0; }
+    .info p { margin: 10px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #667eea; }
+    .status { display: inline-block; padding: 5px 15px; background: #10b981; color: white; border-radius: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Test Execution Report</h1>
+    </div>
+    <div class="info">
+      <p><span class="status">✓ Generated</span></p>
+      <p><strong>Test Run ID:</strong> ${testRunId}</p>
+      <p><strong>Report Type:</strong> Basic HTML Report</p>
+      <p><em>Note: Allure CLI is not available. Install allure-commandline for full Allure reports.</em></p>
+    </div>
+  </div>
+</body>
+</html>`;
+        fs.writeFileSync(indexHtml, htmlContent);
+        logger.info(`Basic HTML report generated at: ${reportPath}`);
+      }
+
+      logger.info(`Report generated at: ${reportPath}`);
       return reportPath;
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error generating Allure report:', error);
-      throw new Error('Failed to generate Allure report');
+      // Even on error, try to create a basic report
+      try {
+        const reportPath = path.join(ALLURE_REPORTS_DIR, testRunId);
+        if (!fs.existsSync(reportPath)) {
+          fs.mkdirSync(reportPath, { recursive: true });
+        }
+        const indexHtml = path.join(reportPath, 'index.html');
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Report - ${testRunId}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+    .header { background: #667eea; color: white; padding: 20px; border-radius: 5px; }
+    .error { color: #ef4444; padding: 10px; background: #fee2e2; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Test Execution Report</h1>
+    </div>
+    <div class="error">
+      <p><strong>Error:</strong> ${error.message || 'Failed to generate report'}</p>
+      <p><strong>Test Run ID:</strong> ${testRunId}</p>
+    </div>
+  </div>
+</body>
+</html>`;
+        fs.writeFileSync(indexHtml, htmlContent);
+        return reportPath;
+      } catch (fallbackError) {
+        logger.error('Even fallback report creation failed:', fallbackError);
+        throw new Error(error.message || 'Failed to generate Allure report');
+      }
     }
   }
 

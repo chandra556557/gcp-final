@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { logger } from '../utils/logger';
-import pool from '../db';
+import db from '../db';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -17,13 +17,13 @@ router.get('/', authMiddleware, async (req, res) => {
 
     let result;
     try {
-      result = await pool.query(
+      result = await db.query(
         'SELECT id, name, description, "createdAt", "updatedAt" FROM "Project" WHERE "userId" = $1 ORDER BY "createdAt" DESC',
         [userId]
       );
     } catch (_err) {
       // Fallback if case-sensitive table name differs
-      result = await pool.query(
+      result = await db.query(
         'SELECT id, name, description, createdAt, updatedAt FROM project WHERE userId = $1 ORDER BY createdAt DESC',
         [userId]
       );
@@ -58,12 +58,12 @@ router.post('/', authMiddleware, async (req, res) => {
 
     let result;
     try {
-      result = await pool.query(
+      result = await db.query(
         'INSERT INTO "Project"(id, name, description, "userId", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,now(),now()) RETURNING id, name, description, "createdAt", "updatedAt"',
         [id, name.trim(), description || null, userId]
       );
     } catch (_err) {
-      result = await pool.query(
+      result = await db.query(
         'INSERT INTO project(id, name, description, userId, createdAt, updatedAt) VALUES ($1,$2,$3,$4,now(),now()) RETURNING id, name, description, createdAt, updatedAt',
         [id, name.trim(), description || null, userId]
       );
@@ -86,12 +86,12 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     let result;
     try {
-      result = await pool.query(
+      result = await db.query(
         'SELECT id, name, description, "createdAt", "updatedAt" FROM "Project" WHERE id = $1 AND "userId" = $2',
         [id, userId]
       );
     } catch (_err) {
-      result = await pool.query(
+      result = await db.query(
         'SELECT id, name, description, createdAt, updatedAt FROM project WHERE id = $1 AND userId = $2',
         [id, userId]
       );
@@ -120,12 +120,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     let result;
     try {
-      result = await pool.query(
+      result = await db.query(
         'UPDATE "Project" SET name = $1, description = $2, "updatedAt" = now() WHERE id = $3 AND "userId" = $4 RETURNING id, name, description, "createdAt", "updatedAt"',
         [name, description || null, id, userId]
       );
     } catch (_err) {
-      result = await pool.query(
+      result = await db.query(
         'UPDATE project SET name = $1, description = $2, updatedAt = now() WHERE id = $3 AND userId = $4 RETURNING id, name, description, createdAt, updatedAt',
         [name, description || null, id, userId]
       );
@@ -153,12 +153,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     let result;
     try {
-      result = await pool.query(
+      result = await db.query(
         'DELETE FROM "Project" WHERE id = $1 AND "userId" = $2 RETURNING id',
         [id, userId]
       );
     } catch (_err) {
-      result = await pool.query(
+      result = await db.query(
         'DELETE FROM project WHERE id = $1 AND userId = $2 RETURNING id',
         [id, userId]
       );

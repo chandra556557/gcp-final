@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
-import pool from '../db';
+import db from '../db';
 import { randomUUID } from 'crypto';
 
 
@@ -51,7 +51,7 @@ export const saveScriptFromExtension = async (req: Request, res: Response) => {
     const { name, description, language, code, browserType } = req.body;
 
     const id = randomUUID();
-    const insertRes = await pool.query(
+    const insertRes = await db.query(
       `INSERT INTO "Script"
        (id, name, description, language, code, "userId", "browserType", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'chromium'), now(), now())

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import ApiTesting from './ApiTesting';
+import TestDataManager from './TestDataManager';
 import ScriptCueCards from './ScriptCueCards';
+import ImportScriptModal from './ImportScriptModal';
 import './Dashboard.css';
 
 const API_URL = 'http://localhost:3001/api';
@@ -33,30 +35,16 @@ interface TestRun {
   script: { name: string };
 }
 
-interface HealingSuggestion {
-  id: string;
-  brokenLocator: string;
-  validLocator: string;
-  confidence: number;
-  status: 'pending' | 'approved' | 'rejected';
-  scriptName?: string;
-  createdAt: string;
-}
-
-// Self-healing functionality removed
-
 interface Stats {
   totalScripts: number;
   totalRuns: number;
   successRate: number;
-  pendingHealing: number;
 }
 
 type ActiveView = 
   | 'overview' 
   | 'scripts' 
   | 'runs' 
-  | 'healing' 
   | 'testdata' 
   | 'apitesting' 
   | 'allure'
@@ -72,31 +60,69 @@ export const Dashboard: React.FC = () => {
   const [projectLoading, setProjectLoading] = useState(false);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [testRuns, setTestRuns] = useState<TestRun[]>([]);
-  // Self-healing functionality removed
-  const [stats, setStats] = useState<Stats>({ totalScripts: 0, totalRuns: 0, successRate: 0, pendingHealing: 0 });
+  const [stats, setStats] = useState<Stats>({ totalScripts: 0, totalRuns: 0, successRate: 0 });
   const [loading, setLoading] = useState(false);
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  const [projectReports, setProjectReports] = useState<Array<{ id: string; scriptName: string; status: string; startedAt: string; completedAt?: string; reportUrl: string }>>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [aiAnalyzing, setAiAnalyzing] = useState(false);
-  const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
   const [importingSample, setImportingSample] = useState(false);
-  // Self-healing functionality removed
-  // Self-healing functionality removed
+  const [importScriptModalOpen, setImportScriptModalOpen] = useState(false);
+  const [currentScriptForModal, setCurrentScriptForModal] = useState<{ id: string; name: string; language?: string } | null>(null);
+  // Pagination controls for Test Runs
+  const [runsPageSize, setRunsPageSize] = useState<number>(10);
+  const [runsPage, setRunsPage] = useState<number>(1);
 
   const token = localStorage.getItem('accessToken');
   const headers = { Authorization: `Bearer ${token}` };
 
+  // Reset pagination when project filter or runs change
+  useEffect(() => {
+    setRunsPage(1);
+  }, [selectedProjectId, testRuns.length]);
+
+  // Avoid overlapping requests and add gentle backoff for rate limits
+  const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+  const fetchWithBackoff = async <T,>(
+    url: string,
+    options: any,
+    retries = 1,
+    backoffMs = 1500
+  ): Promise<T | null> => {
+    try {
+      const res = await axios.get(url, options);
+      return (res.data?.data || res.data) as T;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 429 && retries > 0) {
+        console.warn('Rate limited on', url, '— backing off', backoffMs, 'ms');
+        await delay(backoffMs);
+        return fetchWithBackoff<T>(url, options, retries - 1, backoffMs * 2);
+      }
+      console.error(`Error loading ${url}:`, err);
+      return null;
+    }
+  };
+
   useEffect(() => {
     loadProjects();
+    loadData(); // Load scripts on initial mount
+    // Preload reports for default selection
+    loadProjectReports();
   }, []);
 
   useEffect(() => {
     // Reload data when project changes
     loadData();
+    // Also reload reports list for the selected project
+    loadProjectReports();
   }, [selectedProjectId]);
 
-  // Self-healing functionality removed
+  useEffect(() => {
+    if (activeView === 'allure') {
+      loadProjectReports();
+    }
+  }, [activeView]);
 
   const loadProjects = async () => {
     setProjectLoading(true);
@@ -167,29 +193,46 @@ test('sample login flow', async ({ page }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [scriptsRes, runsRes, healingRes] = await Promise.all([
-        axios.get(`${API_URL}/scripts`, { headers, params: { projectId: selectedProjectId || undefined } }),
-        axios.get(`${API_URL}/test-runs`, { headers, params: { projectId: selectedProjectId || undefined } }),
-        // Self-healing functionality removed
-      ]);
+      const params: any = {};
+      if (selectedProjectId) {
+        params.projectId = selectedProjectId;
+      }
+      
+      // Scripts load (standard)
+      const scriptsRes = await axios.get(`${API_URL}/scripts`, { headers, params }).catch((err) => {
+        console.error('Error loading scripts:', err);
+        return { data: { data: [] } } as any;
+      });
+      const scriptData = scriptsRes?.data?.scripts || scriptsRes?.data?.data || [];
 
-      const scriptData = scriptsRes.data.scripts || scriptsRes.data.data || [];
-      const runData = runsRes.data.data || runsRes.data.testRuns || [];
-      const healingData = healingRes.data.suggestions || [];
+      // Test runs load with 429 backoff
+      const runDataRaw = await fetchWithBackoff<any[]>(`${API_URL}/test-runs`, { headers, params }, 1, 1500);
+      const runData = Array.isArray(runDataRaw)
+        ? runDataRaw
+        : (runDataRaw && (runDataRaw as any).testRuns) || [];
+
+      console.log('Loaded scripts:', scriptData.length);
+      console.log('Loaded test runs:', Array.isArray(runData) ? runData.length : 0);
 
       setScripts(scriptData);
       setTestRuns(runData);
-      setHealingSuggestions(healingData);
 
       const successCount = runData.filter((r: TestRun) => r.status === 'passed').length;
       setStats({
         totalScripts: scriptData.length,
         totalRuns: runData.length,
-        successRate: runData.length > 0 ? Math.round((successCount / runData.length) * 100) : 0,
-        pendingHealing: 0
+        successRate: runData.length > 0 ? Math.round((successCount / runData.length) * 100) : 0
       });
     } catch (error: any) {
       console.error('Error loading data:', error);
+      // Set empty data on error to prevent crashes
+      setScripts([]);
+      setTestRuns([]);
+      setStats({
+        totalScripts: 0,
+        totalRuns: 0,
+        successRate: 0
+      });
     } finally {
       setLoading(false);
     }
@@ -209,27 +252,136 @@ test('sample login flow', async ({ page }) => {
     }
   };
 
-  const approveSuggestion = async (id: string) => {
+  const loadProjectReports = async () => {
     try {
-      // Self-healing functionality removed
-      await loadData();
-    } catch (error) {
-      console.error('Error approving suggestion:', error);
+      const params: any = {};
+      if (selectedProjectId) params.projectId = selectedProjectId;
+      const res = await axios.get(`${API_URL}/allure/reports/by-project`, { headers, params });
+      const list = res.data?.data || [];
+      setProjectReports(Array.isArray(list) ? list : []);
+    } catch (e) {
+      console.error('Error loading project reports:', e);
+      setProjectReports([]);
     }
   };
 
-  const rejectSuggestion = async (id: string) => {
+  const handleImportScriptAndGenerateReport = async (scriptId: string, projectId?: string) => {
     try {
-      // Self-healing functionality removed
+      // Get the script to find its project
+      const scriptRes = await axios.get(`${API_URL}/scripts/${scriptId}`, { headers });
+      const script = scriptRes.data?.data || scriptRes.data;
+      const scriptProjectId = projectId || script.projectId;
+
+      // First, check if there are existing test runs for this script
+      const runsRes = await axios.get(`${API_URL}/test-runs`, {
+        headers,
+        params: { scriptId, projectId: scriptProjectId }
+      });
+
+      const existingRuns = runsRes.data?.data || [];
+      let testRunId: string;
+
+      // If there are existing test runs, use the most recent one
+      if (existingRuns.length > 0) {
+        // Sort by startedAt descending and get the most recent
+        const sortedRuns = existingRuns.sort((a: TestRun, b: TestRun) => 
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+        );
+        const mostRecentRun = sortedRuns[0];
+        
+        // If it already has a report, use it
+        if (mostRecentRun.executionReportUrl) {
+          setSelectedReport(mostRecentRun.executionReportUrl);
+          // Filter by project and script
+          if (scriptProjectId) {
+            setSelectedProjectId(scriptProjectId);
+          }
+          setActiveView('allure');
+          await loadData();
+          return;
+        }
+        
+        testRunId = mostRecentRun.id;
+      } else {
+        // Create a new test run
+        const testRunRes = await axios.post(
+          `${API_URL}/test-runs/start`,
+          { scriptId },
+          { headers }
+        );
+        testRunId = testRunRes.data.data?.id || testRunRes.data.id;
+
+        // Wait for test run to complete (poll for status)
+        let attempts = 0;
+        const maxAttempts = 30; // 30 seconds max wait
+        while (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+          
+          const statusRes = await axios.get(`${API_URL}/test-runs/${testRunId}`, { headers });
+          const status = statusRes.data.data?.status || statusRes.data.status;
+          
+          if (status === 'passed' || status === 'failed' || status === 'completed') {
+            break;
+          }
+          
+          attempts++;
+        }
+      }
+
+      // Generate Allure report
+      const reportRes = await axios.post(
+        `${API_URL}/allure/generate/${testRunId}`,
+        {},
+        { headers }
+      );
+
+      // Set project filter if available
+      if (scriptProjectId) {
+        setSelectedProjectId(scriptProjectId);
+      }
+
+      // Reload data to get updated test runs
       await loadData();
-    } catch (error) {
-      console.error('Error rejecting suggestion:', error);
+
+      // Redirect to execution reports (allure) view to show the generated report
+      if (reportRes.data.reportUrl) {
+        setSelectedReport(reportRes.data.reportUrl);
+        setActiveView('allure');
+      } else {
+        // If no report URL, still go to runs view
+        setActiveView('runs');
+      }
+    } catch (error: any) {
+      console.error('Error generating report:', error);
+      throw new Error(error.response?.data?.error || error.message || 'Failed to generate report');
     }
   };
 
-  // Self-healing functionality removed
+  // Derived pagination values
+  const totalRuns = testRuns.length;
+  const totalPages = Math.max(1, Math.ceil(totalRuns / runsPageSize));
+  const pagedRuns = useMemo(() => {
+    const start = (runsPage - 1) * runsPageSize;
+    const end = start + runsPageSize;
+    return testRuns.slice(start, end);
+  }, [testRuns, runsPage, runsPageSize]);
 
-  // AI Healing removed
+  const handleOpenImportScriptModal = (script: { id: string; name: string; language?: string }) => {
+    console.log('Opening import script modal for:', script);
+    try {
+      setCurrentScriptForModal(script);
+      setImportScriptModalOpen(true);
+      console.log('Modal state set to open');
+    } catch (error) {
+      console.error('Error opening modal:', error);
+    }
+  };
+
+  const handleCloseImportScriptModal = () => {
+    setImportScriptModalOpen(false);
+    setCurrentScriptForModal(null);
+  };
+
 
   const menuItems = [
     { id: 'overview', icon: '📊', label: 'Project Overview', category: 'Main' },
@@ -431,141 +583,35 @@ test('sample login flow', async ({ page }) => {
               <button
                 className="btn-secondary"
                 style={{ marginLeft: 12 }}
-                onClick={importSampleScript}
-                disabled={importingSample || loading}
-                title="Import a starter script"
+                onClick={() => handleOpenImportScriptModal({ id: 'new', name: 'New Script', language: 'typescript' })}
+                disabled={loading}
+                title="Import script from database"
               >
-                {importingSample ? '⏳ Importing...' : '⬇️ Import Sample Script'}
+                📥 Import Script
               </button>
             </div>
             {loading ? (
               <div className="loading-state">Loading scripts...</div>
-            ) : scripts.length === 0 ? (
-              selectedProjectId ? (
-                <>
-                  <div className="empty-state">
-                    <div className="empty-icon">🔍</div>
-                    <h3>No scripts in "{currentProjectName}"</h3>
-                    <p>Try viewing all projects or record a script in this project.</p>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setSelectedProjectId(null)}
-                    >
-                      ↩ Show All Projects
-                    </button>
-                  </div>
-
-                  {/* Default workflow when no scripts exist */}
-                  <div className="content-card" style={{ marginTop: 16 }}>
-                    <div className="card-header">
-                      <h3>New Script Workflow</h3>
-                      <span className="language-badge">typescript</span>
-                    </div>
-                    <p className="card-description">Start a script even if none exist yet.</p>
-                    <ScriptCueCards
-                      script={{ id: 'new', name: 'New Script', language: 'typescript' }}
-                      onGenerate={importSampleScript}
-                      onEnhance={() => setActiveView('aihealing')}
-                      onValidate={() => alert('Open review flow coming soon')}
-                      onFinalize={() => setActiveView('runs')}
-                      onInsights={() => setActiveView('analytics')}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="empty-state">
-                    <div className="empty-icon">📝</div>
-                    <h3>No Scripts Found</h3>
-                    <p>Record some tests using the extension to get started!</p>
-                    <button
-                      className="btn-primary"
-                      onClick={importSampleScript}
-                      disabled={importingSample || loading}
-                      title="Import a starter script"
-                      style={{ marginTop: 8 }}
-                    >
-                      {importingSample ? '⏳ Importing...' : '⬇️ Import Sample Script'}
-                    </button>
-                  </div>
-
-                  {/* Default workflow when no scripts exist */}
-                  <div className="content-card" style={{ marginTop: 16 }}>
-                    <div className="card-header">
-                      <h3>New Script Workflow</h3>
-                      <span className="language-badge">typescript</span>
-                    </div>
-                    <p className="card-description">Start a script even if none exist yet.</p>
-                    <ScriptCueCards
-                      script={{ id: 'new', name: 'New Script', language: 'typescript' }}
-                      onGenerate={importSampleScript}
-                      onEnhance={() => setActiveView('aihealing')}
-                      onValidate={() => alert('Open review flow coming soon')}
-                      onFinalize={() => setActiveView('runs')}
-                      onInsights={() => setActiveView('analytics')}
-                    />
-                  </div>
-                </>
-              )
             ) : (
-              (() => {
-                const grouped = (scripts || []).reduce((acc: Record<string, typeof scripts>, s) => {
-                  const key = s.project?.name || 'No Project';
-                  (acc[key] = acc[key] || []).push(s);
-                  return acc;
-                }, {});
-
-                return (
-                  <div>
-                    {Object.entries(grouped).map(([projectName, groupScripts]) => (
-                      <div key={projectName} style={{ marginBottom: 24 }}>
-                        <h2 style={{ margin: '8px 0' }}>{projectName}</h2>
-                        <div className="cards-grid">
-                          {groupScripts.map((script) => (
-                            <div key={script.id} className="content-card">
-                              <div className="card-header">
-                                <h3>{script.name}</h3>
-                                <span className="language-badge">{script.language}</span>
-                              </div>
-                              {script.description && (
-                                <p className="card-description">{script.description}</p>
-                              )}
-                              <div className="card-meta">
-                                <span>👤 User: {script.user.name}</span>
-                                {script.user.email && <span>✉️ Email: {script.user.email}</span>}
-                                {script.project?.name && (
-                                  <span>
-                                    📁 Project:
-                                    <button
-                                      className="btn-link"
-                                      style={{ marginLeft: 4, padding: 0, border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer' }}
-                                      onClick={() => script.projectId && setSelectedProjectId(script.projectId)}
-                                      title="Filter by this project"
-                                    >
-                                      {script.project.name}
-                                    </button>
-                                  </span>
-                                )}
-                                <span>📅 {new Date(script.createdAt).toLocaleDateString()}</span>
-                              </div>
-
-                              {/* 5-Step Cue Cards */}
-                              <ScriptCueCards
-                                script={{ id: script.id, name: script.name, language: script.language }}
-                                onGenerate={() => alert(`Generate flow for: ${script.name}`)}
-                                onEnhance={() => setActiveView('aihealing')}
-                                onValidate={() => alert(`Open review for: ${script.name}`)}
-                                onFinalize={() => setActiveView('runs')}
-                                onInsights={() => setActiveView('analytics')}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+              <>
+                <div className="content-card" style={{ marginTop: 16 }}>
+                  <div className="card-header">
+                    <h3>New Script Workflow</h3>
+                    <span className="language-badge">typescript</span>
                   </div>
-                );
-              })()
+                  <p className="card-description">Guided 5-step process for creating and running tests.</p>
+                </div>
+                <ScriptCueCards
+                  layout="standalone"
+                  showHeader={false}
+                  script={{ id: 'new', name: 'New Script', language: 'typescript' }}
+                  onGenerate={() => handleOpenImportScriptModal({ id: 'new', name: 'New Script', language: 'typescript' })}
+                  onEnhance={() => alert('AI Enhancement coming soon')}
+                  onValidate={() => alert('Open review flow coming soon')}
+                  onFinalize={() => setActiveView('runs')}
+                  onInsights={() => setActiveView('analytics')}
+                />
+              </>
             )}
           </div>
           )}
@@ -587,7 +633,7 @@ test('sample login flow', async ({ page }) => {
                 </div>
               ) : (
                 <div className="runs-list">
-                  {testRuns.map((run) => (
+                  {pagedRuns.map((run) => (
                     <div key={run.id} className="run-card">
                       <div className="run-header">
                         <div className="run-info">
@@ -622,290 +668,53 @@ test('sample login flow', async ({ page }) => {
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Self-Healing View Removed */}
-
-          {/* AI Healing */}
-          {activeView === 'aihealing' && (
-            <div className="view-container">
-              <h1 className="view-title">🤖 AI-Powered Self-Healing</h1>
-              {aiStats && (
-                <div className="healing-stats">
-                  <div className="healing-stat">
-                    <span className="stat-number">{aiStats.totalAnalyzed}</span>
-                    <span className="stat-text">Total Analyzed</span>
-                  </div>
-                  <div className="healing-stat approved">
-                    <span className="stat-number">{aiStats.autoHealed}</span>
-                    <span className="stat-text">Auto-Healed</span>
-                  </div>
-                  <div className="healing-stat pending">
-                    <span className="stat-number">{aiStats.manualReview}</span>
-                    <span className="stat-text">Manual Review</span>
-                  </div>
-                  <div className="healing-stat">
-                    <span className="stat-number">{Math.round(aiStats.successRate)}%</span>
-                    <span className="stat-text">Success Rate</span>
-                  </div>
-                  <div className="healing-stat">
-                    <span className="stat-number">{Math.round(aiStats.avgConfidence * 100)}%</span>
-                    <span className="stat-text">Avg Confidence</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="ai-healing-intro">
-                <div className="intro-card">
-                  <h3>🔬 Live AI Analyzer</h3>
-                  <p>Test the AI healing system by analyzing a broken locator in real-time.</p>
-
-                  <div className="ai-test-form">
-                    <div className="form-group">
-                      <label>Broken Locator:</label>
-                      <input
-                        type="text"
-                        value={testLocator}
-                        onChange={(e) => setTestLocator(e.target.value)}
-                        placeholder="e.g., button.submit-btn-12345 or //div[@id='old-id']"
-                        className="form-input"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Locator Type:</label>
-                      <select
-                        value={testLocatorType}
-                        onChange={(e) => setTestLocatorType(e.target.value)}
-                        className="form-select"
+                  {/* Pagination Controls */}
+                  <div className="pagination" aria-label="Test runs pagination" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+                    <span style={{ color: '#666' }}>
+                      Showing {Math.min((runsPage - 1) * runsPageSize + 1, totalRuns)}–{Math.min(runsPage * runsPageSize, totalRuns)} of {totalRuns}
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => setRunsPage((p) => Math.max(1, p - 1))}
+                        disabled={runsPage <= 1}
+                        aria-label="Previous page"
                       >
-                        <option value="css">CSS</option>
-                        <option value="xpath">XPath</option>
-                        <option value="playwright">Playwright</option>
+                        ← Prev
+                      </button>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => setRunsPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={runsPage >= totalPages}
+                        aria-label="Next page"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                    <label htmlFor="runs-page-size" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Page size:
+                      <select
+                        id="runs-page-size"
+                        value={runsPageSize}
+                        onChange={(e) => setRunsPageSize(parseInt(e.target.value, 10))}
+                        aria-label="Select page size"
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
                       </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label>Element Snapshot (JSON - Optional):</label>
-                      <textarea
-                        value={testElementSnapshot}
-                        onChange={(e) => setTestElementSnapshot(e.target.value)}
-                        placeholder={`{
-  "tagName": "button",
-  "textContent": "Submit",
-  "attributes": {
-    "data-testid": "submit-btn",
-    "id": "submit-form",
-    "aria-label": "Submit form"
-  }
-}`}
-                        className="form-textarea"
-                        rows={8}
-                      />
-                    </div>
-
-                    <button
-                      onClick={analyzeLocatorWithAI}
-                      disabled={aiAnalyzing || !testLocator}
-                      className="btn-primary"
-                    >
-                      {aiAnalyzing ? '🔄 Analyzing...' : '🔍 Analyze with AI'}
-                    </button>
-                  </div>
-
-                  {aiAnalysisResult && (
-                    <div className="ai-results">
-                      <div className="results-header">
-                        <h3>🎯 Analysis Results</h3>
-                        <div className="confidence-badge" style={{
-                          backgroundColor: aiAnalysisResult.confidence >= 0.85 ? '#10b981' :
-                                          aiAnalysisResult.confidence >= 0.60 ? '#f59e0b' : '#ef4444'
-                        }}>
-                          {Math.round(aiAnalysisResult.confidence * 100)}% Confidence
-                        </div>
-                      </div>
-
-                      <div className="result-action">
-                        <strong>Recommended Action:</strong>
-                        <span className={`action-badge ${aiAnalysisResult.recommendedAction}`}>
-                          {aiAnalysisResult.recommendedAction === 'auto_fix' ? '✅ Auto-Fix' :
-                           aiAnalysisResult.recommendedAction === 'manual_review' ? '⚠️ Manual Review' :
-                           '❌ Ignore'}
-                        </span>
-                      </div>
-
-                      <div className="suggestions-list">
-                        <h4>💡 Top Suggestions:</h4>
-                        {aiAnalysisResult.suggestedLocators.map((suggestion, idx) => (
-                          <div key={idx} className="suggestion-card">
-                            <div className="suggestion-header">
-                              <span className="suggestion-rank">#{idx + 1}</span>
-                              <span className="suggestion-score">
-                                {Math.round(suggestion.score * 100)}%
-                              </span>
-                            </div>
-                            <div className="suggestion-locator">
-                              <code>{suggestion.locator}</code>
-                              <span className="locator-type">{suggestion.type}</span>
-                            </div>
-                            <div className="suggestion-reasoning">
-                              💭 {suggestion.reasoning}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="element-context">
-                        <h4>📋 Element Context:</h4>
-                        <p><strong>Tag:</strong> {aiAnalysisResult.elementContext.tag}</p>
-                        {aiAnalysisResult.elementContext.text && (
-                          <p><strong>Text:</strong> {aiAnalysisResult.elementContext.text}</p>
-                        )}
-                        <p><strong>Similar Elements:</strong> {aiAnalysisResult.similarElements}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="ai-features-grid">
-                <div className="ai-feature-card">
-                  <div className="feature-icon">🎯</div>
-                  <h3>Smart Suggestions</h3>
-                  <p>AI generates multiple locator options ranked by stability and uniqueness</p>
-                </div>
-                <div className="ai-feature-card">
-                  <div className="feature-icon">📊</div>
-                  <h3>Confidence Scores</h3>
-                  <p>Each suggestion includes a confidence score to guide your decision</p>
-                </div>
-                <div className="ai-feature-card">
-                  <div className="feature-icon">🔄</div>
-                  <h3>Auto-Healing</h3>
-                  <p>High-confidence suggestions can be applied automatically</p>
-                </div>
-                <div className="ai-feature-card">
-                  <div className="feature-icon">🧠</div>
-                  <h3>Learning System</h3>
-                  <p>The AI learns from approved suggestions to improve future recommendations</p>
-                </div>
-              </div>
-
-              <div className="ai-strategies">
-                <h2>AI Healing Strategies</h2>
-                <div className="strategies-list">
-                  <div className="strategy-item">
-                    <div className="strategy-priority high">Priority 1</div>
-                    <div className="strategy-content">
-                      <h4>Data Test IDs</h4>
-                      <p>Looks for <code>data-testid</code> attributes - the most stable selectors</p>
-                    </div>
-                  </div>
-                  <div className="strategy-item">
-                    <div className="strategy-priority high">Priority 2</div>
-                    <div className="strategy-content">
-                      <h4>Unique IDs</h4>
-                      <p>Identifies stable, non-dynamic ID attributes</p>
-                    </div>
-                  </div>
-                  <div className="strategy-item">
-                    <div className="strategy-priority medium">Priority 3</div>
-                    <div className="strategy-content">
-                      <h4>ARIA Labels</h4>
-                      <p>Uses accessibility attributes for semantic selection</p>
-                    </div>
-                  </div>
-                  <div className="strategy-item">
-                    <div className="strategy-priority medium">Priority 4</div>
-                    <div className="strategy-content">
-                      <h4>Role-Based</h4>
-                      <p>Leverages ARIA roles for interactive elements</p>
-                    </div>
-                  </div>
-                  <div className="strategy-item">
-                    <div className="strategy-priority medium">Priority 5</div>
-                    <div className="strategy-content">
-                      <h4>Text Content</h4>
-                      <p>Uses visible text for human-readable selectors</p>
-                    </div>
-                  </div>
-                  <div className="strategy-item">
-                    <div className="strategy-priority low">Priority 6</div>
-                    <div className="strategy-content">
-                      <h4>Stable Classes</h4>
-                      <p>Filters out dynamic classes to find stable ones</p>
-                    </div>
+                    </label>
                   </div>
                 </div>
-              </div>
-
-              <div className="ai-demo-section">
-                <h2>Try AI Healing</h2>
-                <div className="demo-card">
-                  <p className="demo-instructions">
-                    To see AI healing in action:
-                  </p>
-                  <ol className="demo-steps">
-                    <li>Go to the <strong>Self-Healing</strong> tab</li>
-                    <li>Review pending suggestions</li>
-                    <li>High-confidence suggestions (85%+) can be auto-approved</li>
-                    <li>The AI learns from your approvals to improve future suggestions</li>
-                  </ol>
-                  <button 
-                    className="btn-primary"
-                    onClick={() => setActiveView('healing')}
-                  >
-                    View Self-Healing Suggestions
-                  </button>
-                </div>
-              </div>
-
-              <div className="ai-benefits">
-                <h2>Benefits of AI Healing</h2>
-                <div className="benefits-grid">
-                  <div className="benefit-item">
-                    <span className="benefit-icon">⚡</span>
-                    <span className="benefit-text">Faster test maintenance</span>
-                  </div>
-                  <div className="benefit-item">
-                    <span className="benefit-icon">🎯</span>
-                    <span className="benefit-text">More reliable selectors</span>
-                  </div>
-                  <div className="benefit-item">
-                    <span className="benefit-icon">🔧</span>
-                    <span className="benefit-text">Reduced manual fixing</span>
-                  </div>
-                  <div className="benefit-item">
-                    <span className="benefit-icon">📈</span>
-                    <span className="benefit-text">Improved test stability</span>
-                  </div>
-                  <div className="benefit-item">
-                    <span className="benefit-icon">🧠</span>
-                    <span className="benefit-text">Continuous learning</span>
-                  </div>
-                  <div className="benefit-item">
-                    <span className="benefit-icon">💰</span>
-                    <span className="benefit-text">Lower maintenance costs</span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
+
 
           {/* Test Data Management */}
           {activeView === 'testdata' && (
-            <div className="view-container">
-              <h1 className="view-title">Test Data Management</h1>
-              <div className="empty-state">
-                <div className="empty-icon">🗄️</div>
-                <h3>Test Data Management</h3>
-                <p>Test data management features are currently being developed.</p>
-                <p>This section will allow you to manage test data repositories, snapshots, and synthetic data generation.</p>
-              </div>
-            </div>
+            <TestDataManager selectedProjectId={selectedProjectId} />
           )}
 
           {/* API Testing */}
@@ -929,13 +738,47 @@ test('sample login flow', async ({ page }) => {
                   />
                 </div>
               ) : (
-                <div className="empty-state">
-                  <div className="empty-icon">📊</div>
-                  <h3>No Report Selected</h3>
-                  <p>Generate or view an execution report from the Test Runs section.</p>
-                  <button className="btn-primary" onClick={() => setActiveView('runs')}>
-                    View Test Runs
-                  </button>
+                <div>
+                  <div style={{ marginBottom: 12, color: '#666' }}>
+                    Project: <strong>{selectedProjectId ? currentProjectName : 'All Projects'}</strong>
+                  </div>
+                  {projectReports.length === 0 ? (
+                    <div className="empty-state">
+                      <div className="empty-icon">📊</div>
+                      <h3>No Reports Found</h3>
+                      <p>Select a project or generate a report from Test Runs.</p>
+                      <button className="btn-primary" onClick={() => setActiveView('runs')}>
+                        View Test Runs
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="runs-list">
+                      {projectReports.map((rep) => (
+                        <div key={rep.id} className="run-card">
+                          <div className="run-header">
+                            <div className="run-info">
+                              <h3>{rep.scriptName}</h3>
+                              <div className="run-meta">
+                                <span className={`status-badge ${rep.status}`}>{rep.status}</span>
+                                <span>🕒 {new Date(rep.startedAt).toLocaleString()}</span>
+                                {rep.completedAt && <span>✅ {new Date(rep.completedAt).toLocaleString()}</span>}
+                              </div>
+                            </div>
+                            <div className="run-actions">
+                              <button
+                                className="btn-secondary"
+                                onClick={() => {
+                                  setSelectedReport(rep.reportUrl);
+                                }}
+                              >
+                                📊 View Report
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -966,6 +809,16 @@ test('sample login flow', async ({ page }) => {
           )}
         </div>
       </main>
+
+      {/* Import Script Modal */}
+      {importScriptModalOpen && (
+        <ImportScriptModal
+          isOpen={importScriptModalOpen}
+          onClose={handleCloseImportScriptModal}
+          onGenerateReport={handleImportScriptAndGenerateReport}
+          currentScriptId={currentScriptForModal?.id}
+        />
+      )}
     </div>
   );
 };

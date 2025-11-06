@@ -75,4 +75,13 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
 });
 
-export default pool;
+const db = {
+  query: pool.query.bind(pool),
+  end: pool.end.bind(pool),
+  connect: pool.connect.bind(pool),
+  get totalCount() { return pool.totalCount; },
+  get idleCount() { return pool.idleCount; },
+  get waitingCount() { return pool.waitingCount; }
+};
+
+export default db;

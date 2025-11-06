@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { AppError } from '../middleware/errorHandler';
 import { allureService } from '../services/allure.service';
-import pool from '../db';
+import db from '../db';
 import { randomUUID } from 'crypto';
 
 
@@ -11,23 +11,31 @@ import { randomUUID } from 'crypto';
 export const getTestRuns = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { projectId } = req.query;
+    const { projectId, scriptId } = req.query;
 
     let query = `SELECT tr.*, s.name AS script_name, s."projectId" AS script_project_id
        FROM "TestRun" tr
        JOIN "Script" s ON s.id = tr."scriptId"
        WHERE tr."userId" = $1`;
     
-    const params = [userId];
+    const params: any[] = [userId];
+    let paramIndex = 2;
     
     if (projectId) {
-      query += ` AND s."projectId" = $2`;
+      query += ` AND s."projectId" = $${paramIndex}`;
       params.push(projectId as string);
+      paramIndex++;
+    }
+    
+    if (scriptId) {
+      query += ` AND tr."scriptId" = $${paramIndex}`;
+      params.push(scriptId as string);
+      paramIndex++;
     }
     
     query += ` ORDER BY tr."startedAt" DESC`;
 
-    const { rows } = await pool.query(query, params);
+    const { rows } = await db.query(query, params);
 
     const testRuns = rows.map(r => ({
       ...r,
@@ -48,7 +56,7 @@ export const getTestRun = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT tr.*, s.name AS script_name, s.language AS script_language
        FROM "TestRun" tr
        LEFT JOIN "Script" s ON s.id = tr."scriptId"
@@ -85,7 +93,7 @@ export const startTestRun = async (req: Request, res: Response) => {
 
     if (!scriptId) throw new AppError('Script ID is required', 400);
 
-    const scriptRes = await pool.query(
+    const scriptRes = await db.query(
       `SELECT id, name FROM "Script" WHERE id = $1 AND "userId" = $2`,
       [scriptId, userId]
     );
@@ -93,7 +101,7 @@ export const startTestRun = async (req: Request, res: Response) => {
     if (!script) throw new AppError('Script not found', 404);
 
     const id = randomUUID();
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO "TestRun" (id, "scriptId", "userId", status, environment, browser, "startedAt")
        VALUES ($1, $2, $3, 'queued', COALESCE($4, 'development'), COALESCE($5, 'chromium'), now())
        RETURNING *`,
@@ -122,7 +130,7 @@ export const startTestRun = async (req: Request, res: Response) => {
 
         await allureService.endTest(testRun.id, 'passed');
 
-        await pool.query(
+        await db.query(
           `UPDATE "TestRun"
            SET status = 'passed',
                "completedAt" = now(),
@@ -159,14 +167,14 @@ export const executeCurrentScript = async (req: Request, res: Response) => {
     const tempScriptId = randomUUID();
     
     // Create a temporary script entry
-    await pool.query(
+    await db.query(
       `INSERT INTO "Script" (id, name, description, language, code, "userId", "browserType", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'chromium'), now(), now())`,
       [tempScriptId, 'Current Script (Temp)', 'Temporary script for direct execution', language, code, userId, browser ?? null]
     );
 
     const testRunId = randomUUID();
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO "TestRun" (id, "scriptId", "userId", status, environment, browser, "startedAt")
        VALUES ($1, $2, $3, 'running', COALESCE($4, 'development'), COALESCE($5, 'chromium'), now())
        RETURNING *`,
@@ -196,7 +204,7 @@ export const executeCurrentScript = async (req: Request, res: Response) => {
 
         await allureService.endTest(testRun.id, 'passed');
 
-        await pool.query(
+        await db.query(
           `UPDATE "TestRun"
            SET status = 'passed',
                "completedAt" = now(),
@@ -207,7 +215,7 @@ export const executeCurrentScript = async (req: Request, res: Response) => {
 
         // Clean up temporary script after test completes (with delay)
         setTimeout(async () => {
-          await pool.query(
+          await db.query(
             `DELETE FROM "Script" WHERE id = $1`,
             [tempScriptId]
           ).catch(err => console.error('Failed to cleanup temp script:', err));
@@ -215,7 +223,7 @@ export const executeCurrentScript = async (req: Request, res: Response) => {
       } catch (error) {
         console.error('Failed to complete current script execution:', error);
         // Update test run as failed
-        await pool.query(
+        await db.query(
           `UPDATE "TestRun"
            SET status = 'failed',
                "completedAt" = now(),
@@ -245,13 +253,13 @@ export const stopTestRun = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const exists = await pool.query(
+    const exists = await db.query(
       `SELECT id FROM "TestRun" WHERE id = $1 AND "userId" = $2`,
       [id, userId]
     );
     if (!exists.rowCount) throw new AppError('Test run not found', 404);
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE "TestRun"
        SET status = 'cancelled', "completedAt" = now()
        WHERE id = $1
@@ -276,7 +284,7 @@ export const getActiveTestRuns = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT tr.*, s.name AS script_name
        FROM "TestRun" tr
        JOIN "Script" s ON s.id = tr."scriptId"
@@ -302,7 +310,7 @@ export const updateTestRun = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { status, errorMsg, duration, steps } = req.body;
 
-    const existsRes = await pool.query(
+    const existsRes = await db.query(
       `SELECT tr.id, s.name AS script_name
        FROM "TestRun" tr JOIN "Script" s ON s.id = tr."scriptId"
        WHERE tr.id = $1 AND tr."userId" = $2`,
@@ -338,7 +346,7 @@ export const updateTestRun = async (req: Request, res: Response) => {
       }
     }
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE "TestRun"
        SET status = COALESCE($2, status),
            "errorMsg" = $3,
@@ -379,7 +387,7 @@ export const reportTestResult = async (req: Request, res: Response) => {
 
     if (!testName || !status) throw new AppError('testName and status are required', 400);
 
-    let scriptRes = await pool.query(
+    let scriptRes = await db.query(
       `SELECT id FROM "Script" WHERE "userId" = $1 AND name = $2`,
       [userId, testName]
     );
@@ -387,7 +395,7 @@ export const reportTestResult = async (req: Request, res: Response) => {
 
     if (!script) {
       const scriptId = randomUUID();
-      const created = await pool.query(
+      const created = await db.query(
         `INSERT INTO "Script" (id, name, description, language, code, "userId", "browserType", "createdAt", "updatedAt")
          VALUES ($1, $2, $3, 'typescript', $4, $5, 'chromium', now(), now())
          RETURNING id`,
@@ -397,7 +405,7 @@ export const reportTestResult = async (req: Request, res: Response) => {
     }
 
     const runId = randomUUID();
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO "TestRun" (id, "scriptId", "userId", status, duration, "errorMsg", browser, environment, "traceUrl", "videoUrl", "screenshotUrls", "completedAt", "startedAt")
        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'msedge'), COALESCE($8, 'development'), $9, $10, $11, now(), now())
        RETURNING *`,
