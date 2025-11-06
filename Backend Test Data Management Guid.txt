@@ -1,0 +1,323 @@
+# Backend Test Data Management Guide
+
+This guide documents a simple, file‑based test data management approach for the backend using JSON resources. It covers directory structure, file contents, usage conventions, and example controller/route integration.
+
+## Overview
+- Purpose: Centralize environment configs, test suites, cases, datasets, and variables for API/UI tests.
+- Storage: JSON files under `backend\data\test-data` with a single `index.json` acting as the registry.
+- Access: Backend controllers load from `index.json` to resolve file paths and serve CRUD endpoints if needed.
+
+## Directory Structure
+```
+backend/
+  data/
+    test-data/
+      index.json
+      environments.json
+      testSuites.json
+      testCases.json
+      dataSets.json
+      variables.json
+```
+
+## Quick Start (Windows)
+Create the directory:
+```
+powershell -NoProfile -Command "New-Item -ItemType Directory -Path 'c:\play-crx-feature-test-execution\backend\data\test-data' -Force | Out-Null"
+```
+
+## Files and Schemas
+
+### `index.json`
+- Acts as a registry pointing to the other files.
+- Fields:
+  - `version`: number for schema versioning.
+  - `resources`: object with file names.
+  - `metadata`: description and timestamps.
+
+Example:
+```json
+{
+  "version": 1,
+  "resources": {
+    "environments": "environments.json",
+    "testSuites": "testSuites.json",
+    "testCases": "testCases.json",
+    "dataSets": "dataSets.json",
+    "variables": "variables.json"
+  },
+  "metadata": {
+    "description": "Central index to locate backend test data files",
+    "lastUpdatedAt": "2025-11-06T00:00:00Z"
+  }
+}
+```
+
+### `environments.json`
+- Manage environment targets and vars.
+- Fields:
+  - `defaultEnvironmentId`: environment to use when not specified.
+  - `environments[]`: list of env entries with `id`, `name`, `baseUrl`, `apiBaseUrl`, optional `headers` and `variables`.
+
+Example:
+```json
+{
+  "defaultEnvironmentId": "local",
+  "environments": [
+    {
+      "id": "local",
+      "name": "Local Dev",
+      "baseUrl": "http://localhost:5173",
+      "apiBaseUrl": "http://localhost:3001",
+      "headers": {},
+      "variables": {
+        "featureFlagSelfHealing": true
+      },
+      "metadata": {
+        "lastUpdatedBy": "system",
+        "lastUpdatedAt": "2025-11-06T00:00:00Z"
+      }
+    },
+    {
+      "id": "staging",
+      "name": "Staging",
+      "baseUrl": "https://staging.example.com",
+      "apiBaseUrl": "https://api.staging.example.com",
+      "headers": {
+        "Authorization": "Bearer ${ACCESS_TOKEN}"
+      },
+      "variables": {},
+      "metadata": {
+        "lastUpdatedBy": "qa",
+        "lastUpdatedAt": "2025-11-01T12:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+### `testSuites.json`
+- Group related test cases.
+- Item fields: `id`, `name`, `description`, `tags[]`, `testCaseIds[]`, `metadata`.
+
+Example:
+```json
+[
+  {
+    "id": "suite-smoke",
+    "name": "Smoke",
+    "description": "Critical happy-path checks",
+    "tags": ["smoke", "ci"],
+    "testCaseIds": ["tc-auth-login-success", "tc-dashboard-loads"],
+    "metadata": { "owner": "QA", "priority": "P0" }
+  },
+  {
+    "id": "suite-api",
+    "name": "API",
+    "description": "API contract tests",
+    "tags": ["api"],
+    "testCaseIds": ["tc-api-get-users", "tc-api-create-user"],
+    "metadata": { "owner": "QA", "priority": "P1" }
+  }
+]
+```
+
+### `testCases.json`
+- Define executable actions and assertions for UI/API.
+- Common fields:
+  - `id`, `name`, `suiteId`, `type` (`ui` | `api`), optional `datasetId`.
+  - For UI: `steps[]` with `action`, `selector/target`, and `assertions[]`.
+  - For API: `request{ method, url, headers, body }`, `assertions[]`.
+
+Example:
+```json
+[
+  {
+    "id": "tc-auth-login-success",
+    "name": "Login succeeds with valid credentials",
+    "suiteId": "suite-smoke",
+    "type": "ui",
+    "datasetId": "ds-auth-valid",
+    "steps": [
+      { "action": "navigate", "target": "${env.baseUrl}/login" },
+      { "action": "fill", "selector": "#username", "value": "${data.username}" },
+      { "action": "fill", "selector": "#password", "value": "${data.password}" },
+      { "action": "click", "selector": "button[type='submit']" }
+    ],
+    "assertions": [
+      { "type": "visible", "selector": "[data-test='dashboard']" }
+    ],
+    "tags": ["auth", "smoke"]
+  },
+  {
+    "id": "tc-dashboard-loads",
+    "name": "Dashboard renders for authenticated user",
+    "suiteId": "suite-smoke",
+    "type": "ui",
+    "datasetId": "ds-auth-valid",
+    "steps": [
+      { "action": "navigate", "target": "${env.baseUrl}/dashboard" }
+    ],
+    "assertions": [
+      { "type": "visible", "selector": "[data-test='dashboard-title']" }
+    ],
+    "tags": ["ui", "smoke"]
+  },
+  {
+    "id": "tc-api-get-users",
+    "name": "GET /users returns list",
+    "suiteId": "suite-api",
+    "type": "api",
+    "request": {
+      "method": "GET",
+      "url": "${env.apiBaseUrl}/users",
+      "headers": { "Authorization": "Bearer ${ACCESS_TOKEN}" }
+    },
+    "assertions": [
+      { "type": "status", "equals": 200 },
+      { "type": "jsonPath", "path": "$.length", "gte": 1 }
+    ],
+    "tags": ["api"]
+  },
+  {
+    "id": "tc-api-create-user",
+    "name": "POST /users creates user",
+    "suiteId": "suite-api",
+    "type": "api",
+    "request": {
+      "method": "POST",
+      "url": "${env.apiBaseUrl}/users",
+      "headers": {
+        "Authorization": "Bearer ${ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "${data.name}",
+        "email": "${data.email}"
+      }
+    },
+    "assertions": [
+      { "type": "status", "equals": 201 },
+      { "type": "jsonPath", "path": "$.id", "exists": true }
+    ],
+    "datasetId": "ds-user-create",
+    "tags": ["api"]
+  }
+]
+```
+
+### `dataSets.json`
+- Parameterize test cases with reusable inputs.
+- Fields: `id`, `name`, `data` (object with arbitrary keys).
+
+Example:
+```json
+[
+  {
+    "id": "ds-auth-valid",
+    "name": "Valid credentials",
+    "data": { "username": "qa_user", "password": "ChangeMe!" }
+  },
+  {
+    "id": "ds-auth-invalid",
+    "name": "Invalid credentials",
+    "data": { "username": "qa_user", "password": "wrongpass" }
+  },
+  {
+    "id": "ds-user-create",
+    "name": "User create payload",
+    "data": { "name": "QA Bot", "email": "qa.bot@example.com" }
+  }
+]
+```
+
+### `variables.json`
+- Global variables and knobs shared across environments.
+- Fields:
+  - `global`: key/value pairs.
+  - `notes`: freeform guidance.
+
+Example:
+```json
+{
+  "global": {
+    "ACCESS_TOKEN": "",
+    "RETRY_COUNT": 2,
+    "TIMEOUT_MS": 30000
+  },
+  "notes": "Populate ACCESS_TOKEN from your secret manager or environment variables; do not commit real secrets."
+}
+```
+
+## Conventions
+- Placeholder expansion:
+  - `${env.*}` for values from the selected environment.
+  - `${data.*}` for the active dataset fields.
+  - `${ACCESS_TOKEN}` from global variables or process environment.
+- Timestamps: ISO 8601 `YYYY-MM-DDTHH:mm:ssZ`.
+- Tags: lower-case words, hyphen separated when needed.
+
+## Loading Data (Node/Express Example)
+```js
+import path from 'node:path';
+import fs from 'node:fs/promises';
+
+const dataRoot = path.resolve(process.cwd(), 'backend', 'data', 'test-data');
+
+async function readJson(file) {
+  const p = path.join(dataRoot, file);
+  const raw = await fs.readFile(p, 'utf8');
+  return JSON.parse(raw);
+}
+
+export async function loadRegistry() {
+  const index = await readJson('index.json');
+  return {
+    index,
+    environments: await readJson(index.resources.environments),
+    testSuites: await readJson(index.resources.testSuites),
+    testCases: await readJson(index.resources.testCases),
+    dataSets: await readJson(index.resources.dataSets),
+    variables: await readJson(index.resources.variables)
+  };
+}
+```
+
+## Minimal Routes (Optional)
+```js
+import { Router } from 'express';
+import { loadRegistry } from './dataLoader.js';
+
+const router = Router();
+
+router.get('/test-data', async (req, res) => {
+  const all = await loadRegistry();
+  res.json(all);
+});
+
+router.get('/test-data/suites', async (req, res) => {
+  const { testSuites } = await loadRegistry();
+  res.json(testSuites);
+});
+
+router.get('/test-data/cases', async (req, res) => {
+  const { testCases } = await loadRegistry();
+  res.json(testCases);
+});
+
+export default router;
+```
+
+## Security Notes
+- Do not commit real secrets. Keep `ACCESS_TOKEN` empty and inject at runtime.
+- Consider read-only access in CI; restrict write endpoints to trusted users.
+- Validate JSON inputs when adding CRUD routes; reject malformed data.
+
+## Versioning
+- Bump `index.json` `version` when making breaking schema changes.
+- Use clear commit messages and PR descriptions for data updates.
+
+## Next Steps
+- Create the `backend\data\test-data` directory and populate files as above.
+- Wire routes/controllers in `backend\src\routes` and `backend\src\controllers` to serve test data.
+- If you want, we can scaffold the directory and starter JSON files automatically.
