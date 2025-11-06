@@ -1,0 +1,810 @@
+# 📁 File Structure
+
+```
+logs/test-data/
+├── templates.json
+├── jobs.json
+├── datasets.json
+├── ai-configs.json
+├── ai-prompts.json
+└── data-patterns.json
+```
+
+---
+
+## 📄 1. templates.json
+
+```json
+{
+  "templates": [
+    {
+      "id": "tmpl_banking_customer",
+      "name": "Banking Customer Profile",
+      "description": "AI-generated synthetic banking customer data",
+      "projectId": null,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "customerId": { 
+            "type": "string", 
+            "pattern": "CUST[0-9]{8}",
+            "description": "Unique customer identifier"
+          },
+          "firstName": { 
+            "type": "string", 
+            "minLength": 2, 
+            "maxLength": 50,
+            "description": "Customer first name"
+          },
+          "lastName": { 
+            "type": "string", 
+            "minLength": 2, 
+            "maxLength": 50,
+            "description": "Customer last name"
+          },
+          "email": { 
+            "type": "string", 
+            "format": "email",
+            "description": "Customer email address"
+          },
+          "age": { 
+            "type": "integer", 
+            "minimum": 18, 
+            "maximum": 85,
+            "description": "Customer age"
+          },
+          "creditScore": { 
+            "type": "integer", 
+            "minimum": 300, 
+            "maximum": 850,
+            "description": "Credit score (300-850)"
+          },
+          "accountType": { 
+            "type": "string", 
+            "enum": ["checking", "savings", "investment", "credit"],
+            "description": "Primary account type"
+          },
+          "riskLevel": { 
+            "type": "string", 
+            "enum": ["low", "medium", "high"],
+            "description": "Customer risk assessment"
+          },
+          "annualIncome": { 
+            "type": "number", 
+            "minimum": 25000, 
+            "maximum": 500000,
+            "description": "Annual income in USD"
+          }
+        },
+        "required": ["customerId", "firstName", "lastName", "email", "age", "creditScore", "accountType", "riskLevel", "annualIncome"]
+      },
+      "aiConfig": {
+        "model": "gpt-4",
+        "promptId": "banking_customer_profile",
+        "variationLevel": "medium",
+        "constraints": {
+          "piiLevel": "synthetic",
+          "dataRanges": {
+            "age": [18, 85],
+            "creditScore": [300, 850],
+            "income": [25000, 500000]
+          },
+          "businessRules": [
+            "credit_score_correlation",
+            "income_age_correlation",
+            "risk_assessment_rules"
+          ]
+        },
+        "qualityThreshold": 0.85
+      },
+      "createdAt": "2025-11-06T10:00:00Z",
+      "updatedAt": "2025-11-06T10:00:00Z"
+    },
+    {
+      "id": "tmpl_banking_transaction",
+      "name": "Banking Transaction Data",
+      "description": "AI-generated synthetic transaction records",
+      "projectId": null,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "transactionId": { 
+            "type": "string", 
+            "pattern": "TXN[0-9]{12}",
+            "description": "Unique transaction identifier"
+          },
+          "customerId": { 
+            "type": "string",
+            "description": "Customer identifier"
+          },
+          "transactionType": { 
+            "type": "string", 
+            "enum": ["debit", "credit", "transfer", "payment"],
+            "description": "Transaction type"
+          },
+          "amount": { 
+            "type": "number", 
+            "minimum": 0.01, 
+            "maximum": 100000,
+            "description": "Transaction amount"
+          },
+          "merchant": { 
+            "type": "string",
+            "description": "Merchant name"
+          },
+          "category": { 
+            "type": "string", 
+            "enum": ["retail", "food", "utilities", "entertainment", "healthcare"],
+            "description": "Transaction category"
+          },
+          "timestamp": { 
+            "type": "string", 
+            "format": "date-time",
+            "description": "Transaction timestamp"
+          },
+          "location": { 
+            "type": "object",
+            "properties": { 
+              "city": { "type": "string" },
+              "state": { "type": "string" }
+            },
+            "description": "Transaction location"
+          },
+          "fraudIndicator": { 
+            "type": "boolean",
+            "description": "Fraud detection flag"
+          }
+        },
+        "required": ["transactionId", "customerId", "transactionType", "amount", "merchant", "category", "timestamp", "fraudIndicator"]
+      },
+      "aiConfig": {
+        "model": "claude-3",
+        "promptId": "banking_transaction_data",
+        "variationLevel": "high",
+        "constraints": {
+          "piiLevel": "masked",
+          "businessRules": [
+            "daily_limit_check",
+            "fraud_pattern_detection",
+            "aml_compliance",
+            "merchant_category_validation"
+          ]
+        },
+        "qualityThreshold": 0.90
+      },
+      "createdAt": "2025-11-06T10:00:00Z",
+      "updatedAt": "2025-11-06T10:00:00Z"
+    },
+    {
+      "id": "tmpl_default",
+      "name": "Default User Profile",
+      "description": "Basic synthetic user data for testing",
+      "projectId": null,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "age": { "type": "integer", "minimum": 18, "maximum": 100 }
+        },
+        "required": ["id", "name", "email", "age"]
+      },
+      "aiConfig": {
+        "model": "gpt-4",
+        "promptId": "basic_user_profile",
+        "variationLevel": "low",
+        "constraints": {
+          "piiLevel": "synthetic",
+          "dataRanges": {
+            "age": [18, 100]
+          }
+        },
+        "qualityThreshold": 0.80
+      },
+      "createdAt": "2025-11-06T09:00:00Z",
+      "updatedAt": "2025-11-06T09:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## 📄 2. jobs.json
+
+```json
+{
+  "jobs": [
+    {
+      "id": "job_1733544000abc",
+      "status": "completed",
+      "createdAt": "2025-11-06T10:00:00Z",
+      "completedAt": "2025-11-06T10:02:35Z",
+      "templateId": "tmpl_banking_customer",
+      "count": 100,
+      "projectId": null,
+      "aiMetadata": {
+        "model": "gpt-4",
+        "promptVersion": "v1.2",
+        "tokensUsed": 15420,
+        "processingTime": 145000,
+        "qualityScore": 0.92,
+        "validationResults": [
+          { 
+            "rule": "schema_compliance", 
+            "passed": true, 
+            "score": 1.0,
+            "details": "All records match schema requirements"
+          },
+          { 
+            "rule": "business_rules", 
+            "passed": true, 
+            "score": 0.95,
+            "details": "Business rules validation passed"
+          },
+          { 
+            "rule": "data_consistency", 
+            "passed": true, 
+            "score": 0.89,
+            "details": "Data consistency checks passed"
+          },
+          { 
+            "rule": "privacy_compliance", 
+            "passed": true, 
+            "score": 1.0,
+            "details": "Privacy compliance verified"
+          }
+        ],
+        "anomalies": [
+          {
+            "type": "outlier",
+            "field": "annualIncome",
+            "value": 950000,
+            "expectedRange": [25000, 500000],
+            "action": "auto_corrected",
+            "correctedValue": 485000
+          }
+        ],
+        "cost": {
+          "tokens": 15420,
+          "costPerToken": 0.00003,
+          "totalCost": 0.4626
+        }
+      },
+      "generatedBy": "ai-service",
+      "userId": "user_123"
+    },
+    {
+      "id": "job_1733544200def",
+      "status": "running",
+      "createdAt": "2025-11-06T10:03:20Z",
+      "templateId": "tmpl_banking_transaction",
+      "count": 500,
+      "projectId": null,
+      "aiMetadata": {
+        "model": "claude-3",
+        "promptVersion": "v1.1",
+        "estimatedTokens": 25000,
+        "progress": 65,
+        "currentQualityScore": 0.87,
+        "estimatedCost": 0.625,
+        "startedAt": "2025-11-06T10:03:25Z",
+        "estimatedCompletion": "2025-11-06T10:05:45Z"
+      },
+      "generatedBy": "ai-service",
+      "userId": "user_123"
+    },
+    {
+      "id": "job_1733543800ghi",
+      "status": "failed",
+      "createdAt": "2025-11-06T09:50:00Z",
+      "completedAt": "2025-11-06T09:51:15Z",
+      "templateId": "tmpl_banking_customer",
+      "count": 50,
+      "projectId": null,
+      "aiMetadata": {
+        "model": "gpt-4",
+        "promptVersion": "v1.2",
+        "tokensUsed": 8500,
+        "processingTime": 75000,
+        "qualityScore": 0.0,
+        "error": {
+          "type": "validation_failed",
+          "message": "Generated data failed schema validation",
+          "details": "Missing required field: creditScore"
+        }
+      },
+      "generatedBy": "ai-service",
+      "userId": "user_456"
+    }
+  ]
+}
+```
+
+---
+
+## 📄 3. datasets.json
+
+```json
+{
+  "items": [
+    {
+      "id": "job_1733544000abc_0",
+      "projectId": null,
+      "templateId": "tmpl_banking_customer",
+      "userProfile": {
+        "customerId": "CUST12345678",
+        "firstName": "Alexandra",
+        "lastName": "Chen",
+        "email": "alexandra.chen@example.com",
+        "age": 34,
+        "creditScore": 742,
+        "accountType": "checking",
+        "riskLevel": "low",
+        "annualIncome": 85000
+      },
+      "aiMetadata": {
+        "generatedAt": "2025-11-06T10:01:15Z",
+        "confidence": 0.94,
+        "dataQuality": 0.91,
+        "validationPassed": true,
+        "anomalies": [],
+        "aiModel": "gpt-4",
+        "promptVersion": "v1.2",
+        "generationTime": 1450
+      },
+      "_ts": "2025-11-06T10:02:35Z"
+    },
+    {
+      "id": "job_1733544000abc_1",
+      "projectId": null,
+      "templateId": "tmpl_banking_customer",
+      "userProfile": {
+        "customerId": "CUST87654321",
+        "firstName": "Marcus",
+        "lastName": "Johnson",
+        "email": "marcus.johnson@example.com",
+        "age": 45,
+        "creditScore": 688,
+        "accountType": "investment",
+        "riskLevel": "medium",
+        "annualIncome": 125000
+      },
+      "aiMetadata": {
+        "generatedAt": "2025-11-06T10:01:16Z",
+        "confidence": 0.89,
+        "dataQuality": 0.87,
+        "validationPassed": true,
+        "anomalies": [
+          {
+            "type": "statistical_outlier",
+            "field": "creditScore",
+            "severity": "low",
+            "action": "accepted",
+            "reason": "Within acceptable range for age group"
+          }
+        ],
+        "aiModel": "gpt-4",
+        "promptVersion": "v1.2",
+        "generationTime": 1520
+      },
+      "_ts": "2025-11-06T10:02:35Z"
+    },
+    {
+      "id": "job_1733544000abc_2",
+      "projectId": null,
+      "templateId": "tmpl_banking_customer",
+      "userProfile": {
+        "customerId": "CUST11223344",
+        "firstName": "Sofia",
+        "lastName": "Rodriguez",
+        "email": "sofia.rodriguez@example.com",
+        "age": 28,
+        "creditScore": 715,
+        "accountType": "savings",
+        "riskLevel": "low",
+        "annualIncome": 62000
+      },
+      "aiMetadata": {
+        "generatedAt": "2025-11-06T10:01:17Z",
+        "confidence": 0.91,
+        "dataQuality": 0.89,
+        "validationPassed": true,
+        "anomalies": [],
+        "aiModel": "gpt-4",
+        "promptVersion": "v1.2",
+        "generationTime": 1380
+      },
+      "_ts": "2025-11-06T10:02:35Z"
+    },
+    {
+      "id": "job_1733544200def_0",
+      "projectId": null,
+      "templateId": "tmpl_banking_transaction",
+      "transactionData": {
+        "transactionId": "TXN20251106001",
+        "customerId": "CUST12345678",
+        "transactionType": "debit",
+        "amount": 45.67,
+        "merchant": "Whole Foods Market",
+        "category": "food",
+        "timestamp": "2025-11-05T14:23:15Z",
+        "location": {
+          "city": "San Francisco",
+          "state": "CA"
+        },
+        "fraudIndicator": false
+      },
+      "aiMetadata": {
+        "generatedAt": "2025-11-06T10:04:20Z",
+        "confidence": 0.87,
+        "dataQuality": 0.85,
+        "validationPassed": true,
+        "anomalies": [],
+        "aiModel": "claude-3",
+        "promptVersion": "v1.1",
+        "generationTime": 890
+      },
+      "_ts": "2025-11-06T10:04:20Z"
+    }
+  ]
+}
+```
+
+---
+
+## 📄 4. ai-configs.json
+
+```json
+{
+  "models": [
+    {
+      "id": "gpt-4",
+      "name": "GPT-4",
+      "provider": "openai",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "maxTokens": 4096,
+      "temperature": 0.7,
+      "topP": 0.9,
+      "frequencyPenalty": 0.1,
+      "presencePenalty": 0.1,
+      "timeout": 30000,
+      "retryAttempts": 3,
+      "costPerToken": 0.00003,
+      "capabilities": ["text_generation", "structured_data", "validation"],
+      "bankingCompliant": true,
+      "dataTypes": ["customer_profile", "transaction", "risk_assessment"],
+      "strengths": ["structured_data_generation", "business_rule_application"],
+      "limitations": ["cost", "rate_limits"]
+    },
+    {
+      "id": "claude-3",
+      "name": "Claude 3",
+      "provider": "anthropic",
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "maxTokens": 4096,
+      "temperature": 0.6,
+      "topP": 0.8,
+      "timeout": 25000,
+      "retryAttempts": 3,
+      "costPerToken": 0.000025,
+      "capabilities": ["text_generation", "structured_data", "analysis"],
+      "bankingCompliant": true,
+      "dataTypes": ["transaction", "fraud_detection", "compliance"],
+      "strengths": ["fraud_pattern_detection", "compliance_analysis"],
+      "limitations": ["structured_data_complexity"]
+    },
+    {
+      "id": "local-llm",
+      "name": "Local LLM",
+      "provider": "local",
+      "endpoint": "http://localhost:11434/api/generate",
+      "maxTokens": 2048,
+      "temperature": 0.8,
+      "topP": 0.9,
+      "timeout": 60000,
+      "retryAttempts": 2,
+      "costPerToken": 0.0,
+      "capabilities": ["text_generation", "basic_structured_data"],
+      "bankingCompliant": true,
+      "dataTypes": ["basic_profile", "simple_transaction"],
+      "strengths": ["cost", "privacy", "no_rate_limits"],
+      "limitations": ["quality", "complexity", "speed"]
+    }
+  ],
+  "defaultModel": "gpt-4",
+  "fallbackModel": "claude-3",
+  "modelSelection": {
+    "customer_profile": "gpt-4",
+    "transaction": "claude-3",
+    "fraud_detection": "claude-3",
+    "risk_assessment": "gpt-4",
+    "compliance": "claude-3",
+    "basic_data": "local-llm"
+  },
+  "costOptimization": {
+    "enableFallback": true,
+    "maxCostPerJob": 10.0,
+    "preferredModelForLargeJobs": "claude-3",
+    "useLocalForBatch": true
+  },
+  "security": {
+    "encryptApiKeys": true,
+    "logApiCalls": true,
+    "maskSensitiveData": true,
+    "auditTrail": true
+  }
+}
+```
+
+---
+
+## 📄 5. ai-prompts.json
+
+```json
+{
+  "prompts": [
+    {
+      "id": "banking_customer_profile",
+      "name": "Banking Customer Profile Generator",
+      "template": "Generate realistic banking customer data following these specifications:\n\nSchema: {schema}\nConstraints: {constraints}\nBusiness Rules: {businessRules}\n\nRequirements:\n1. Generate diverse, culturally appropriate names\n2. Ensure age correlates with income and credit score\n3. Follow realistic demographic distributions\n4. Apply banking risk assessment logic\n5. Ensure all data is synthetic but realistic\n6. Validate against provided schema\n7. Apply data ranges and constraints strictly\n\nOutput format: JSON array of customer records\n\nExample output:\n[\n  {\n    \"customerId\": \"CUST12345678\",\n    \"firstName\": \"Alexandra\",\n    \"lastName\": \"Chen\",\n    \"email\": \"alexandra.chen@example.com\",\n    \"age\": 34,\n    \"creditScore\": 742,\n    \"accountType\": \"checking\",\n    \"riskLevel\": \"low\",\n    \"annualIncome\": 85000\n  }\n]",
+      "version": "v1.2",
+      "category": "banking",
+      "dataTypes": ["customer_profile"],
+      "lastUpdated": "2025-11-06T09:00:00Z",
+      "variables": {
+        "schema": "customer_profile_schema",
+        "constraints": "banking_constraints",
+        "businessRules": ["credit_score_correlation", "income_age_correlation", "risk_assessment_rules"]
+      },
+      "validationRules": [
+        "required_fields_present",
+        "data_types_correct",
+        "ranges_validated",
+        "business_rules_applied"
+      ]
+    },
+    {
+      "id": "banking_transaction_data",
+      "name": "Banking Transaction Data Generator",
+      "template": "Generate realistic banking transaction data with these parameters:\n\nSchema: {schema}\nConstraints: {constraints}\nBusiness Rules: {businessRules}\n\nRequirements:\n1. Generate realistic transaction amounts by category\n2. Apply fraud detection patterns (approximately 2-5% fraud rate)\n3. Ensure merchant category consistency\n4. Follow daily/monthly spending patterns\n5. Include subtle fraud indicators for testing\n6. Validate AML compliance rules\n7. Apply geographic consistency\n8. Generate timestamps within realistic ranges\n\nOutput format: JSON array of transaction records\n\nExample output:\n[\n  {\n    \"transactionId\": \"TXN20251106001\",\n    \"customerId\": \"CUST12345678\",\n    \"transactionType\": \"debit\",\n    \"amount\": 45.67,\n    \"merchant\": \"Whole Foods Market\",\n    \"category\": \"food\",\n    \"timestamp\": \"2025-11-05T14:23:15Z\",\n    \"location\": {\n      \"city\": \"San Francisco\",\n      \"state\": \"CA\"\n    },\n    \"fraudIndicator\": false\n  }\n]",
+      "version": "v1.1",
+      "category": "banking",
+      "dataTypes": ["transaction"],
+      "lastUpdated": "2025-11-06T09:30:00Z",
+      "variables": {
+        "schema": "transaction_schema",
+        "constraints": "transaction_constraints",
+        "businessRules": ["daily_limit_check", "fraud_pattern_detection", "aml_compliance", "merchant_category_validation"]
+      },
+      "validationRules": [
+        "transaction_id_unique",
+        "amount_positive",
+        "category_valid",
+        "timestamp_valid",
+        "fraud_indicators_realistic"
+      ]
+    },
+    {
+      "id": "basic_user_profile",
+      "name": "Basic User Profile Generator",
+      "template": "Generate basic user profile data for testing:\n\nSchema: {schema}\nConstraints: {constraints}\n\nRequirements:\n1. Generate simple, realistic user data\n2. Ensure all fields are populated\n3. Use diverse name patterns\n4. Generate valid email addresses\n5. Apply age constraints\n\nOutput format: JSON array of user records",
+      "version": "v1.0",
+      "category": "general",
+      "dataTypes": ["user_profile"],
+      "lastUpdated": "2025-11-06T08:00:00Z",
+      "variables": {
+        "schema": "basic_user_schema",
+        "constraints": "basic_constraints"
+      },
+      "validationRules": [
+        "required_fields_present",
+        "email_format_valid",
+        "age_in_range"
+      ]
+    }
+  ],
+  "promptOptimization": {
+    "enableContextCompression": true,
+    "maxPromptLength": 3000,
+    "useExamples": true,
+    "enableFewShot": true,
+    "temperatureAdjustment": {
+      "highVariation": 0.9,
+      "mediumVariation": 0.7,
+      "lowVariation": 0.3
+    }
+  }
+}
+```
+
+---
+
+## 📄 6. data-patterns.json
+
+```json
+{
+  "patterns": [
+    {
+      "id": "age_income_correlation",
+      "name": "Age-Income Correlation",
+      "type": "correlation",
+      "fields": ["age", "annualIncome"],
+      "pattern": "positive_correlation",
+      "strength": 0.75,
+      "description": "Income generally increases with age until retirement",
+      "learnedFrom": "historical_data",
+      "confidence": 0.92,
+      "rules": [
+        {
+          "condition": "age >= 18 && age <= 25",
+          "incomeRange": [25000, 45000],
+          "confidence": 0.85
+        },
+        {
+          "condition": "age >= 26 && age <= 35",
+          "incomeRange": [35000, 75000],
+          "confidence": 0.90
+        },
+        {
+          "condition": "age >= 36 && age <= 50",
+          "incomeRange": [50000, 120000],
+          "confidence": 0.88
+        },
+        {
+          "condition": "age >= 51 && age <= 65",
+          "incomeRange": [60000, 150000],
+          "confidence": 0.82
+        }
+      ]
+    },
+    {
+      "id": "credit_score_risk_mapping",
+      "name": "Credit Score to Risk Level",
+      "type": "mapping",
+      "fields": ["creditScore", "riskLevel"],
+      "pattern": {
+        "low": { "min": 720, "max": 850 },
+        "medium": { "min": 650, "max": 719 },
+        "high": { "min": 300, "max": 649 }
+      },
+      "description": "Standard banking risk assessment based on credit scores",
+      "learnedFrom": "banking_rules",
+      "confidence": 0.98,
+      "exceptions": [
+        {
+          "condition": "age < 25 && creditScore > 750",
+          "riskLevel": "medium",
+          "reason": "Young customers with high credit scores may have limited credit history"
+        }
+      ]
+    },
+    {
+      "id": "transaction_amount_patterns",
+      "name": "Transaction Amount by Category",
+      "type": "distribution",
+      "fields": ["category", "amount"],
+      "pattern": {
+        "retail": { 
+          "min": 10, 
+          "max": 500, 
+          "mean": 75,
+          "distribution": "log_normal"
+        },
+        "food": { 
+          "min": 5, 
+          "max": 200, 
+          "mean": 35,
+          "distribution": "normal"
+        },
+        "utilities": { 
+          "min": 50, 
+          "max": 500, 
+          "mean": 150,
+          "distribution": "normal"
+        },
+        "entertainment": { 
+          "min": 20, 
+          "max": 300, 
+          "mean": 80,
+          "distribution": "log_normal"
+        },
+        "healthcare": { 
+          "min": 25, 
+          "max": 1000, 
+          "mean": 200,
+          "distribution": "exponential"
+        }
+      },
+      "description": "Typical transaction amounts by merchant category",
+      "learnedFrom": "transaction_analysis",
+      "confidence": 0.87,
+      "seasonality": {
+        "retail": {
+          "november_december_multiplier": 1.5,
+          "january_february_multiplier": 0.7
+        },
+        "healthcare": {
+          "winter_multiplier": 1.2,
+          "summer_multiplier": 0.9
+        }
+      }
+    },
+    {
+      "id": "account_type_age_distribution",
+      "name": "Account Type by Age Group",
+      "type": "distribution",
+      "fields": ["age", "accountType"],
+      "pattern": {
+        "18-25": {
+          "checking": 0.7,
+          "savings": 0.25,
+          "investment": 0.03,
+          "credit": 0.02
+        },
+        "26-35": {
+          "checking": 0.6,
+          "savings": 0.3,
+          "investment": 0.07,
+          "credit": 0.03
+        },
+        "36-50": {
+          "checking": 0.5,
+          "savings": 0.25,
+          "investment": 0.2,
+          "credit": 0.05
+        },
+        "51-65": {
+          "checking": 0.4,
+          "savings": 0.3,
+          "investment": 0.25,
+          "credit": 0.05
+        }
+      },
+      "description": "Account type preferences by age group",
+      "learnedFrom": "customer_demographics",
+      "confidence": 0.91
+    },
+    {
+      "id": "fraud_pattern_indicators",
+      "name": "Fraud Pattern Indicators",
+      "type": "anomaly_detection",
+      "fields": ["transactionType", "amount", "timestamp", "location"],
+      "pattern": {
+        "high_risk_indicators": [
+          {
+            "condition": "amount > 5000 && transactionType === 'debit'",
+            "fraudProbability": 0.15,
+            "description": "Large debit transactions"
+          },
+          {
+            "condition": "location.state !== 'usual_state'",
+            "fraudProbability": 0.25,
+            "description": "Out-of-state transactions"
+          },
+          {
+            "condition": "timestamp.hour >= 23 || timestamp.hour <= 5",
+            "fraudProbability": 0.20,
+            "description": "Late night transactions"
+          },
+          {
+            "condition": "multiple_transactions_same_merchant_short_time",
+            "fraudProbability": 0.30,
+            "description": "Rapid successive transactions"
+          }
+        ]
+      },
+      "description": "Common fraud indicators for transaction monitoring",
+      "learnedFrom": "fraud_analysis",
+      "confidence": 0.84
+    }
+  ],
+  "patternEvolution": {
+    "enableLearning": true,
+    "minDataPoints": 100,
+    "updateFrequency": "weekly",
+    "confidenceThreshold": 0.8
+  }
+}
+```
